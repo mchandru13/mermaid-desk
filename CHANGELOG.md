@@ -9,13 +9,21 @@ it for people deciding whether to upgrade (see `docs/RELEASING.md`).
 
 ## [Unreleased]
 
+Nothing yet. Add entries here as changes land; move them into a dated version
+section when you cut a release.
+
+## [1.2.0] - 2026-11-20
+
+Open tabs and unsaved edits now survive a restart or a crash.
+
 ### Added
 
 - Session recovery: open tabs and unsaved buffers are restored after a restart or a
   crash, so an untitled diagram is no longer lost. Clean files are re-read from disk;
   a dirty buffer keeps the modification time it was based on, so an external edit still
   triggers the overwrite prompt. A confirmed "close without saving" leaves those
-  buffers out of the recovery file instead of bringing them back.
+  buffers out of the recovery file instead of bringing them back. With more than 20
+  open tabs, unsaved ones are kept in preference to clean ones.
 
 ### Fixed
 
@@ -25,7 +33,8 @@ it for people deciding whether to upgrade (see `docs/RELEASING.md`).
 ### Verification
 
 66 Rust tests, 64 Vitest tests, 25 Playwright scenarios and 45 checks against the
-installed Windows build, including quitting and relaunching with an unsaved edit.
+installed Windows build, including quitting with an unsaved edit and relaunching to
+find it restored. Checksums for the installers are published in these notes.
 
 ## [1.1.1] - 2026-11-20
 
