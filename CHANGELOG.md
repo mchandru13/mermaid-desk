@@ -9,19 +9,18 @@ it for people deciding whether to upgrade (see `docs/RELEASING.md`).
 
 ## [Unreleased]
 
+Nothing yet. Add entries here as changes land; move them into a dated version
+section when you cut a release.
+
+## [1.1.1] - 2026-11-20
+
+A security patch. Upgrading is recommended for anyone running 1.1.0.
+
 ### Security
 
 - Pin the `dompurify` copy that `monaco-editor` bundles to the current 3.4.18 via an
   npm override. The bundled 3.2.7 matched 22 advisories; this app never feeds Monaco
   untrusted markdown, so it was not exploitable here, but it shipped.
-- `reveal_document` now refuses any path that was not opened or saved in this session,
-  matching the read/write authorisation model instead of opening Explorer for
-  arbitrary paths.
-- Tighten the Content Security Policy to `frame-src 'none'`; nothing in the app uses
-  frames.
-- CI fails when a production dependency has a moderate-or-higher advisory, and every
-  release now publishes SHA-256 checksums in the notes and as `SHA256SUMS.txt`.
-
 - `read_document` now requires authorisation or membership in the persisted recent
   list, closing the gap where any absolute `.mmd`/`.mermaid`/`.md`/`.txt` path could
   be read. `save_app_settings` only accepts recents that are authorised this session
@@ -31,6 +30,20 @@ it for people deciding whether to upgrade (see `docs/RELEASING.md`).
 - Drag-and-drop paths are captured by Rust from the window event. The webview no
   longer supplies them: the removed `open_dropped_documents` command could previously
   authorise, read and then overwrite any `.mmd`/`.md`/`.txt` file on disk.
+- `reveal_document` now refuses any path that was not opened or saved in this session,
+  matching the read/write authorisation model instead of opening Explorer for
+  arbitrary paths.
+- Tighten the Content Security Policy to `frame-src 'none'`; nothing in the app uses
+  frames.
+- CI fails when a production dependency has a moderate-or-higher advisory, and every
+  release now publishes SHA-256 checksums in the notes and as `SHA256SUMS.txt`.
+
+### Changed
+
+- Open dialog: only the diagram filters are offered, so a file opened from the app can
+  always appear in Recent files.
+- Settings schema is version 2; recent entries without a diagram extension are pruned
+  on load.
 
 ### Verification
 
