@@ -177,9 +177,11 @@ mod tests {
     #[test]
     fn roundtrips_through_disk() {
         let dir = tempfile::tempdir().unwrap();
-        let mut settings = Settings::default();
-        settings.theme = "dark".to_string();
-        settings.recent_files = vec!["C:\\diagrams\\one.mmd".to_string()];
+        let settings = Settings {
+            theme: "dark".to_string(),
+            recent_files: vec!["C:\\diagrams\\one.mmd".to_string()],
+            ..Settings::default()
+        };
         let stored = store_settings(dir.path(), settings.clone()).unwrap();
         assert_eq!(stored, settings);
         let loaded = load_settings(dir.path());
@@ -222,8 +224,10 @@ mod tests {
     fn writes_a_backup_when_replacing() {
         let dir = tempfile::tempdir().unwrap();
         store_settings(dir.path(), Settings::default()).unwrap();
-        let mut changed = Settings::default();
-        changed.theme = "light".to_string();
+        let changed = Settings {
+            theme: "light".to_string(),
+            ..Settings::default()
+        };
         store_settings(dir.path(), changed).unwrap();
         assert!(dir.path().join("settings.backup.json").exists());
     }
@@ -231,10 +235,12 @@ mod tests {
     #[test]
     fn recent_files_are_capped() {
         let dir = tempfile::tempdir().unwrap();
-        let mut settings = Settings::default();
-        settings.recent_files = (0..40)
-            .map(|index| format!("C:\\diagrams\\{index}.mmd"))
-            .collect();
+        let settings = Settings {
+            recent_files: (0..40)
+                .map(|index| format!("C:\\diagrams\\{index}.mmd"))
+                .collect(),
+            ..Settings::default()
+        };
         let stored = store_settings(dir.path(), settings).unwrap();
         assert_eq!(stored.recent_files.len(), MAX_RECENT_FILES);
     }

@@ -123,15 +123,10 @@ fn canonical_target(path: &Path) -> AppResult<PathBuf> {
     Ok(parent.join(file_name))
 }
 
-fn modified_millis(path: &Path) -> Option<u64> {    let modified = fs::metadata(path).ok()?.modified().ok()?;
-    Some(
-        modified
-            .duration_since(UNIX_EPOCH)
-            .ok()?
-            .as_millis()
-            .try_into()
-            .ok()?,
-    )
+fn modified_millis(path: &Path) -> Option<u64> {
+    let modified = fs::metadata(path).ok()?.modified().ok()?;
+    let elapsed = modified.duration_since(UNIX_EPOCH).ok()?;
+    u64::try_from(elapsed.as_millis()).ok()
 }
 
 /// Windows canonicalisation returns verbatim paths (`\\?\C:\...`). They work,
@@ -233,7 +228,9 @@ pub fn read_document(
 ) -> AppResult<DocumentPayload> {
     let candidate = PathBuf::from(&path);
     if !candidate.is_absolute() {
-        return Err(AppError::forbidden("Only absolute file paths are supported."));
+        return Err(AppError::forbidden(
+            "Only absolute file paths are supported.",
+        ));
     }
     let canonical = canonical_existing(&candidate)?;
     if !access.is_authorized(&canonical) && !has_diagram_extension(&canonical) {
@@ -501,9 +498,7 @@ fn export_beside_impl(
 
 /// Drain documents handed to the process by the OS.
 #[tauri::command]
-pub fn take_pending_documents(
-    access: State<'_, DocumentAccess>,
-) -> Vec<DocumentPayload> {
+pub fn take_pending_documents(access: State<'_, DocumentAccess>) -> Vec<DocumentPayload> {
     let pending = access.take_pending();
     let mut documents = Vec::new();
     for path in pending {
@@ -581,7 +576,10 @@ mod tests {
 
     #[test]
     fn appends_default_extension_only_when_missing() {
-        assert_eq!(ensure_extension(PathBuf::from("diagram")), PathBuf::from("diagram.mmd"));
+        assert_eq!(
+            ensure_extension(PathBuf::from("diagram")),
+            PathBuf::from("diagram.mmd")
+        );
         assert_eq!(
             ensure_extension(PathBuf::from("diagram.svg")),
             PathBuf::from("diagram.svg")
@@ -668,8 +666,8 @@ mod tests {
         let chosen = dir.path().join("fresh");
         let access = DocumentAccess::default();
 
-        let payload = perform_save_as(&access, chosen, "graph TD\n A-->B\n".into())
-            .expect("save as");
+        let payload =
+            perform_save_as(&access, chosen, "graph TD\n A-->B\n".into()).expect("save as");
         assert_eq!(payload.name, "fresh.mmd");
         assert!(payload.path.ends_with("fresh.mmd"));
         assert_eq!(
@@ -712,9 +710,8 @@ mod tests {
     fn save_as_refuses_oversized_content() {
         let dir = tempfile::tempdir().unwrap();
         let huge = "x".repeat((MAX_DOCUMENT_BYTES + 1) as usize);
-        let error =
-            perform_save_as(&DocumentAccess::default(), dir.path().join("big.mmd"), huge)
-                .unwrap_err();
+        let error = perform_save_as(&DocumentAccess::default(), dir.path().join("big.mmd"), huge)
+            .unwrap_err();
         assert_eq!(error.code, "invalid");
         assert!(!dir.path().join("big.mmd").exists());
     }
@@ -749,15 +746,21 @@ mod tests {
     fn export_rejects_unknown_formats_and_bad_payloads() {
         let dir = tempfile::tempdir().unwrap();
         assert_eq!(
-            perform_export("pdf", dir.path().join("x"), "<svg/>").unwrap_err().code,
+            perform_export("pdf", dir.path().join("x"), "<svg/>")
+                .unwrap_err()
+                .code,
             "invalid"
         );
         assert_eq!(
-            perform_export("svg", dir.path().join("x"), "not markup").unwrap_err().code,
+            perform_export("svg", dir.path().join("x"), "not markup")
+                .unwrap_err()
+                .code,
             "invalid"
         );
         assert_eq!(
-            perform_export("png", dir.path().join("x"), "!!not base64!!").unwrap_err().code,
+            perform_export("png", dir.path().join("x"), "!!not base64!!")
+                .unwrap_err()
+                .code,
             "invalid"
         );
         assert!(!dir.path().join("x.svg").exists());
@@ -849,8 +852,8 @@ mod tests {
     fn rejected_unauthenticated_writes() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("outside.mmd");
-        let error = save_authorized(&DocumentAccess::default(), path, "graph TD".into(), None)
-            .unwrap_err();
+        let error =
+            save_authorized(&DocumentAccess::default(), path, "graph TD".into(), None).unwrap_err();
         assert_eq!(error.code, "forbidden");
     }
 
@@ -887,5 +890,3 @@ mod tests {
         assert!(canonical_target(&missing).is_err());
     }
 }
-
-
