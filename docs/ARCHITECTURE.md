@@ -149,7 +149,8 @@ with a single backup, and a corrupt file falls back to defaults without being re
 | Frontend unit | Vitest + Testing Library | tab model, dirty tracking, recents, diagram type detection, shortcuts, sanitisation/hardening, export helpers, workspace hook (mock IPC) |
 | Browser E2E | Playwright (production bundle) | render, live edit, diagnostics, save flow, templates, unsaved guard, SVG/PNG/beside export, zoom/pan/theme, dialogs, multi-tab, drag-and-drop, native-menu actions, OS hand-off, all remote requests blocked |
 | Desktop E2E | tauri-driver + Edge WebDriver + Win32 dialog/menu automation + CDP | launch, native Open, real typing, Save, relaunch/reopen, window-close guard, native menu Save, Save As written and switched, Export dialog, real SVG/PNG files, OS hand-off, direct launch at real size (BOM-clean, centred, fitted) |
-| Continuous integration | GitHub Actions (`.github/workflows/`) | typecheck, Vitest, build, Playwright E2E; Rust fmt/clippy/tests on Windows/macOS/Ubuntu; installer bundles on all three platforms |
+| Release tooling | `node --test` (`npm run test:scripts`) | changelog section extraction (tag/ref normalisation, similar versions, CRLF, missing section), version bump/check across all four files, real-tree consistency |
+| Continuous integration | GitHub Actions (`.github/workflows/`) | typecheck, Vitest, release tooling tests, version consistency, build, Playwright E2E; Rust fmt/clippy/tests on Windows/macOS/Ubuntu; installer bundles and changelog-derived release notes on all three platforms |
 | Installer | Silent NSIS install + registry/window inspection | per-user install, uninstall entry, file associations, installed launch, single-instance hand-off |
 
 The Playwright suite runs the same UI bundle with an in-memory IPC backend because

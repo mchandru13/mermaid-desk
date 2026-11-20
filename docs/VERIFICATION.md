@@ -159,6 +159,7 @@ Both workflows were executed on GitHub, not just written:
 | `ci.yml` (push) | [44706084267](https://github.com/mchandru13/mermaid-desk/actions/runs/44706084267) | **all 5 jobs green** — frontend, browser E2E, Rust on Windows, macOS and Ubuntu |
 | `build.yml` (manual) | [44703728464](https://github.com/mchandru13/mermaid-desk/actions/runs/44703728464) | **all 3 bundle jobs green**; artifacts `mermaid-desk-windows`, `mermaid-desk-macos`, `mermaid-desk-linux` |
 | `build.yml` (tag `v1.0.0`) | [44707864055](https://github.com/mchandru13/mermaid-desk/actions/runs/44707864055) | **all 3 bundle jobs green**; draft release created with 6 assets |
+| `ci.yml` (with release tooling) | [44717716665](https://github.com/mchandru13/mermaid-desk/actions/runs/44717716665) | **all 5 jobs green**, including the new `test:scripts` step (15 cases) and the version consistency check |
 
 The Windows artifact was downloaded and inspected: `MermaidDesk_1.0.0_x64-setup.exe`
 (6.21 MB) and `MermaidDesk_1.0.0_x64_en-US.msi` (7.24 MB).
@@ -190,6 +191,24 @@ CI exposed two real portability problems, both fixed:
   so the recent-file filter (correctly) dropped them. Tests now use the host temp
   directory.
 - `upload-artifact@v7` renamed the `if-no-files-found` value `warning` to `warn`.
+
+### Release notes pipeline
+
+`CHANGELOG.md` is now the single source of truth for release notes, and
+`build.yml` guards the tag before building. Both paths were exercised on GitHub with
+temporary tags, which were deleted afterwards:
+
+| Run | Scenario | Result |
+| --- | --- | --- |
+| [44718723065](https://github.com/mchandru13/mermaid-desk/actions/runs/44718723065) | tag `v1.0.1-1`, changelog section present | **3/3 bundles green**; draft release body matched `node scripts/release-notes.mjs v1.0.1-1` **byte for byte** (195 characters); 6 assets attached |
+| [44719665846](https://github.com/mchandru13/mermaid-desk/actions/runs/44719665846) | tag `v1.0.1-2`, changelog section removed | **3/3 jobs failed in ~30 s at "Extract release notes"**, before any bundle was built, with `CHANGELOG.md has no "## [1.0.1-2]" section`; no release was created |
+
+The version guard was also exercised locally: `set-version.mjs --check --tag v1.0.1`
+exits 1 and names each file that disagrees with the tag.
+
+That smoke test surfaced a Tauri constraint now documented in `docs/RELEASING.md`:
+the MSI target rejects alphabetic prerelease identifiers (`1.0.0-rc.1`), so only
+numeric prereleases or plain `x.y.z` versions can ship an `.msi`.
 
 The desktop E2E suite remains a local script because it needs a real Tauri window,
 native dialogs and WebView2.

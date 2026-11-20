@@ -174,7 +174,7 @@ from step 1 with the same version:
 
 ```bash
 gh release delete v1.0.1 --yes --cleanup-tag
-git tag -d v1.0.1
+git tag -d v1.0.1 2>/dev/null || true
 ```
 
 **Tag pushed with the wrong version or notes, nothing published yet.** Move the tag
