@@ -372,6 +372,24 @@ verified by the full desktop suite:
 | --- | --- | --- |
 | `MermaidDesk_1.1.1_x64-setup.exe` | 6,646,901 B | `8946A6FBF42B331AABBE970880FCE065256EB7409B240F9181CF4657191AEC52` |
 
+### Release 1.2.0
+
+Session recovery, verified on the *released* installer rather than a local build:
+
+- Tag run [44773630638](https://github.com/mchandru13/mermaid-desk/actions/runs/44773630638):
+  three bundles plus the **Checksums** job green; seven assets in the draft.
+- `sha256sum -c SHA256SUMS.txt` → **OK for all six** installers.
+- The changelog prefix matched `node scripts/release-notes.mjs v1.2.0` exactly
+  (984 characters) before publishing.
+- The downloaded `MermaidDesk_1.2.0_x64-setup.exe` was installed
+  (`FileVersion 1.2.0`) and the whole desktop suite was run against it
+  (`MERMAIDDESK_APP=…`): **45/45 checks**, including typing an unsaved edit, quitting,
+  relaunching and finding the edit restored and still marked unsaved.
+
+| Released asset | Size | SHA-256 |
+| --- | --- | --- |
+| `MermaidDesk_1.2.0_x64-setup.exe` | 6,658,321 B | `7266EEEF8F2EA6F8B0733A8BD907B7F882BE347B4AE814736A34398A2D4E8FF6` |
+
 ## 6. REA evidence for the shipped build
 
 | Item | Evidence |
