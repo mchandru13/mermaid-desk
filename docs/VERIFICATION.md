@@ -183,12 +183,11 @@ ProgID. (Checked with `Get-ItemProperty HKCU:\Software\Classes\.mmd`.)
 ## 5. Continuous integration
 
 Both workflows were executed on GitHub, not just written:
-
 | Workflow | Run | Result |
 | --- | --- | --- |
 | `ci.yml` (push) | [44706084267](https://github.com/mchandru13/mermaid-desk/actions/runs/44706084267) | **all 5 jobs green** — frontend, browser E2E, Rust on Windows, macOS and Ubuntu |
 | `build.yml` (manual) | [44703728464](https://github.com/mchandru13/mermaid-desk/actions/runs/44703728464) | **all 3 bundle jobs green**; artifacts `mermaid-desk-windows`, `mermaid-desk-macos`, `mermaid-desk-linux` |
-| `build.yml` (tag `v1.0.0`) | [44707864055](https://github.com/mchandru13/mermaid-desk/actions/runs/44707864055) | **all 3 bundle jobs green**; draft release created with 6 assets |
+| `build.yml` (tag `v1.1.0`) | [44739900217](https://github.com/mchandru13/mermaid-desk/actions/runs/44739900217) | **all 3 bundle jobs green**; draft release body generated from the changelog, 6 assets |
 | `ci.yml` (with release tooling) | [44717716665](https://github.com/mchandru13/mermaid-desk/actions/runs/44717716665) | **all 5 jobs green**, including the new `test:scripts` step (15 cases) and the version consistency check |
 
 The Windows artifact was downloaded and inspected: `MermaidDesk_1.0.0_x64-setup.exe`
@@ -211,6 +210,30 @@ Tagging `v1.0.0` exercised the release branch end to end:
 | --- | --- | --- |
 | `MermaidDesk_1.0.0_x64-setup.exe` | 6,512,108 B | `3983301FF62D1C0AC7B4A40BF19A2A27FEFF6265B11C1C5B4EAB6177F23C1719` |
 | `MermaidDesk_1.0.0_x64_en-US.msi` | 7,589,888 B | `40997E940085DF24767BE93627E9F04BAE8D7A5F024C02B84415C8FF63D71771` |
+
+### Release 1.1.0
+
+`v1.1.0` was cut with the automated path, so the notes were never retyped:
+
+- Run [44739900217](https://github.com/mchandru13/mermaid-desk/actions/runs/44739900217):
+  the version guard and changelog extraction passed on all three jobs, all three
+  bundles built, and the draft gained six assets.
+- The draft body matched `node scripts/release-notes.mjs v1.1.0` **byte for byte**
+  (1,179 characters) before the release was published.
+- `ci.yml` on the same commit ([44739896255](https://github.com/mchandru13/mermaid-desk/actions/runs/44739896255))
+  was green on all five jobs.
+
+The **released** Windows installer was then downloaded, silent-installed and driven
+with the native menu, rather than trusting the local build:
+
+| Check | Result |
+| --- | --- |
+| Downloaded `MermaidDesk_1.1.0_x64-setup.exe` | 6,645,085 B, `FF9412007684A23E3A8CCE0CF7C2A2F694F97C7386EB03AB25E787BDF7C29AF4` |
+| Installed binary reports | `FileVersion 1.1.0`, `ProductName MermaidDesk` |
+| Launch with a `.mmd` argument | window title `release-110.mmd - MermaidDesk` |
+| Native File ▸ Copy PNG | invoked through `WM_COMMAND` |
+| Clipboard read back | `368x325 a=255 rgb=13,17,23` — a real opaque image on the dark theme background |
+| Re-read after 2.5 s | unchanged, so the clipboard handle outlives the command |
 
 The desktop E2E suite remains a local script because it needs a real Tauri window,
 native dialogs and WebView2.
