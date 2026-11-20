@@ -380,20 +380,17 @@ mod tests {
 
     #[test]
     fn loading_drops_non_diagram_recents() {
+        let notes = absolute_path("notes.txt");
+        let key = absolute_path("id_rsa");
+        let diagram = absolute_path("diagram.mmd");
+
         let settings = Settings {
-            recent_files: vec![
-                "C:\\notes.txt".to_string(),
-                "C:\\keys\\id_rsa".to_string(),
-                "C:\\diagram.mmd".to_string(),
-            ],
+            recent_files: vec![notes.clone(), key, diagram.clone()],
             ..Settings::default()
         }
         .sanitized();
 
         // .txt is an accepted diagram extension; the key file is not.
-        assert_eq!(
-            settings.recent_files,
-            vec!["C:\\notes.txt".to_string(), "C:\\diagram.mmd".to_string()]
-        );
+        assert_eq!(settings.recent_files, vec![notes, diagram]);
     }
 }
