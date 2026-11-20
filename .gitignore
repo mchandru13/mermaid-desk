@@ -1,0 +1,25 @@
+# Build output
+dist/
+src-tauri/target/
+src-tauri/gen/
+
+# Dependencies
+node_modules/
+
+# Test artefacts
+test-results/
+playwright-report/
+blob-report/
+.vitest/
+
+# Local research clones and downloaded reference installers
+research/
+
+# Editor/OS noise
+.vscode/
+.idea/
+*.log
+Thumbs.db
+.DS_Store
+tools/
+release/
