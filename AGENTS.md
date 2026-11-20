@@ -186,7 +186,9 @@ Follow `docs/RELEASING.md` exactly.
 - Loosen the CSP, Mermaid security settings, path authorisation, or size caps.
 - Introduce a command that takes a filesystem path from the renderer and authorises it.
 - Commit `node_modules`, `dist`, `src-tauri/target`, `release/`, `tools/`, or
-  `research/` — all gitignored; keep it that way.
+  `research/` — all gitignored; keep it that way. The local `release/` folder is a
+  scratch copy of the last verified download, never a version reference; the GitHub
+  release for the tag is authoritative.
 - Commit a version bump without a changelog section.
 - Reformulate the whole file to make a small change.
 - Force-push `main`, rewrite published history, or delete tags/releases.

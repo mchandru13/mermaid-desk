@@ -58,20 +58,21 @@ npm ci
 npm run tauri:build
 ```
 
-Outputs:
+Outputs (the version comes from `src-tauri/tauri.conf.json`):
 
 ```
-src-tauri/target/release/bundle/nsis/MermaidDesk_1.0.0_x64-setup.exe
-src-tauri/target/release/bundle/msi/MermaidDesk_1.0.0_x64_en-US.msi
+src-tauri/target/release/bundle/nsis/MermaidDesk_<version>_x64-setup.exe
+src-tauri/target/release/bundle/msi/MermaidDesk_<version>_x64_en-US.msi
 ```
-
-The verified installers are also copied to `release/` for convenience
-(`MermaidDesk_1.0.0_x64-setup.exe`, `MermaidDesk_1.0.0_x64_en-US.msi`, and the
-standalone `MermaidDesk.exe`).
 
 The NSIS installer runs per-user (no administrator prompt) and registers the
 `.mmd` / `.mermaid` file associations. The executable inside is
 `src-tauri/target/release/mermaid-desk.exe`.
+
+GitHub Releases are authoritative: every tag publishes the three platform bundles plus
+`SHA256SUMS.txt`. The local `release/` folder is a gitignored scratch copy of the
+*most recently verified* download and is not part of the repository; do not treat it as
+a version reference. Check the release page for what actually shipped.
 
 ### macOS / Linux
 
