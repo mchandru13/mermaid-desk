@@ -18,7 +18,9 @@ pub fn install<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
     let export_png = MenuItemBuilder::with_id("export-png", "Export PNG...").build(app)?;
     let copy_png = MenuItemBuilder::with_id("copy-png", "Copy PNG\tCtrl+Shift+C").build(app)?;
     let close_tab = MenuItemBuilder::with_id("close-tab", "Close Diagram\tCtrl+W").build(app)?;
-    let quit = PredefinedMenuItem::quit(app, Some("Exit"))?;
+    let quit = MenuItemBuilder::with_id("quit", "Exit")
+        .accelerator("CmdOrCtrl+Q")
+        .build(app)?;
 
     let file_menu = SubmenuBuilder::new(app, "File")
         .item(&new_diagram)

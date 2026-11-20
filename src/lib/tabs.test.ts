@@ -1,15 +1,18 @@
 import { describe, expect, it } from "vitest";
+import type { OpenDocument } from "../types";
 import {
   applyPayload,
   baseName,
   findOpenDocument,
   fromPayload,
+  fromSession,
   isDirty,
   newDocument,
   nextActiveId,
   normalizePath,
   pushRecentFile,
   samePath,
+  sessionSnapshot,
   suggestFileName,
 } from "./tabs";
 
@@ -86,5 +89,68 @@ describe("document tabs", () => {
     expect(pushRecentFile(recent, "C:\\B.mmd")).toEqual(["C:\\B.mmd", "C:\\a.mmd"]);
     const many = Array.from({ length: 20 }, (_, index) => `C:\\${index}.mmd`);
     expect(pushRecentFile(many, "C:\\new.mmd", 5)).toHaveLength(5);
+  });
+
+  it("snapshots clean, dirty and untitled tabs appropriately", () => {
+    const clean: OpenDocument = {
+      id: "a",
+      path: "C:\\a.mmd",
+      name: "a.mmd",
+      content: "graph TD",
+      baseline: "graph TD",
+      modified: 1,
+    };
+    const dirty: OpenDocument = { ...clean, id: "b", content: "graph LR" };
+    const untitled: OpenDocument = {
+      id: "c",
+      path: null,
+      name: "Untitled diagram",
+      content: "graph TD",
+      baseline: "graph TD",
+      modified: null,
+    };
+
+    const snapshot = sessionSnapshot([clean, dirty, untitled], "b");
+    expect(snapshot.active).toBe(1);
+    // A clean file is re-read from disk; only the path is needed.
+    expect(snapshot.documents[0].content).toBeNull();
+    expect(snapshot.documents[1]).toMatchObject({ content: "graph LR", dirty: true });
+    // An untitled tab must keep its content even when it is not dirty.
+    expect(snapshot.documents[2]).toMatchObject({ content: "graph TD", dirty: false });
+  });
+
+  it("clamps the active index when tabs are dropped from the snapshot", () => {
+    const docs = [newDocument("graph TD"), newDocument("graph LR")];
+    expect(sessionSnapshot(docs, "missing").active).toBe(0);
+    expect(sessionSnapshot([], null)).toEqual({ active: 0, documents: [] });
+  });
+
+  it("keeps dirty tabs when the snapshot hits its cap", () => {
+    const docs = Array.from({ length: 21 }, (_, index) =>
+      newDocument(`graph TD\n  n${index}`),
+    );
+    // The last tab is the only dirty one and is beyond the cap.
+    docs[20] = { ...docs[20], baseline: "graph TD" };
+    const snapshot = sessionSnapshot(docs, docs[20].id);
+
+    expect(snapshot.documents).toHaveLength(20);
+    expect(snapshot.documents.some((document) => document.content?.includes("n20"))).toBe(
+      true,
+    );
+    expect(snapshot.documents[snapshot.active].content).toContain("n20");
+  });
+
+  it("rebuilds a tab from a restored session document", () => {
+    const restored = fromSession({
+      path: null,
+      name: "Draft",
+      content: "graph LR\n A-->B",
+      baseline: "",
+      modified: null,
+    });
+    expect(restored.id).toBeTruthy();
+    expect(restored.content).toBe("graph LR\n A-->B");
+    expect(restored.baseline).toBe("");
+    expect(isDirty(restored)).toBe(true);
   });
 });

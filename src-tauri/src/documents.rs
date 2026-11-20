@@ -135,7 +135,7 @@ fn modified_millis(path: &Path) -> Option<u64> {
 /// Windows canonicalisation returns verbatim paths (`\\?\C:\...`). They work,
 /// but they are noisy in the UI and in the recent-files list, so the payload
 /// value is normalised for display.
-fn display_path(path: &Path) -> String {
+pub(crate) fn display_path(path: &Path) -> String {
     let text = path.to_string_lossy();
     if let Some(rest) = text.strip_prefix(r"\\?\UNC\") {
         return format!(r"\\{rest}");
@@ -167,7 +167,7 @@ fn strip_bom(text: &str) -> &str {
     text.strip_prefix('\u{feff}').unwrap_or(text)
 }
 
-fn read_text_file(path: &Path) -> AppResult<DocumentPayload> {
+pub(crate) fn read_text_file(path: &Path) -> AppResult<DocumentPayload> {
     let metadata = fs::metadata(path)
         .map_err(|err| AppError::io(format!("Cannot read {}: {err}", path.display())))?;
     if metadata.len() > MAX_DOCUMENT_BYTES {
@@ -184,7 +184,7 @@ fn read_text_file(path: &Path) -> AppResult<DocumentPayload> {
     Ok(payload(path, strip_bom(&text).to_string(), metadata.len()))
 }
 
-fn write_atomic(path: &Path, bytes: &[u8]) -> AppResult<()> {
+pub(crate) fn write_atomic(path: &Path, bytes: &[u8]) -> AppResult<()> {
     let parent = path
         .parent()
         .ok_or_else(|| AppError::invalid("A destination folder is required."))?;

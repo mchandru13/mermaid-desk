@@ -11,10 +11,10 @@ This report records what was actually executed. Anything not executed is listed 
 
 | Suite | Command | Result |
 | --- | --- | --- |
-| Rust unit/integration | `cargo test` (in `src-tauri`) | **49 passed, 0 failed** |
-| Frontend unit/integration | `npm run test` (Vitest) | **56 passed, 0 failed** across 6 files |
-| Production UI E2E | `npm run build && npm run test:e2e` (Playwright, Chromium 159) | **24 passed, 0 failed** |
-| Desktop E2E | `npm run test:desktop` (tauri-driver + WebView2 + real Rust binary) | **43 checks passed** |
+| Rust unit/integration | `cargo test` (in `src-tauri`) | **66 passed, 0 failed** |
+| Frontend unit/integration | `npm run test` (Vitest) | **64 passed, 0 failed** across 6 files |
+| Production UI E2E | `npm run build && npm run test:e2e` (Playwright, Chromium 159) | **25 passed, 0 failed** |
+| Desktop E2E | `npm run test:desktop` (tauri-driver + WebView2 + real Rust binary) | **45 checks passed** |
 | Type check | `npx tsc --noEmit` | clean |
 
 Rust coverage: path canonicalisation, verbatim-path display, extension allowlists,
@@ -81,7 +81,7 @@ Current export behaviour:
 - Pie charts now use theme variables for outlines and text instead of Mermaid's
   hardcoded black outline / light-grey labels.
 
-Desktop checks in detail (43): launch + render; native Open dialog; type detection; **even
+Desktop checks in detail (45): launch + render; native Open dialog; type detection; **even
 editor/preview split, diagram centred and fitted**; real typing; Save to disk; save
 toast; relaunch + reopen; clean state after reopen; window close guard appears and can
 be cancelled; **native File > Save menu** reaches the same handler and writes;
@@ -91,7 +91,8 @@ the diagram (markup, no scripts, no remote references, valid PNG signature and s
 **native File > Copy PNG, then the image read back from the Windows clipboard
 (dimensions, opacity, theme background), and still present 2.5 s later**;
 **quit, relaunch, and reopen this run's saved file from the Recent menu (saved
-content, active tab)**;
+content, active tab)**, **quit with an unsaved edit and find it restored after
+relaunch**;
 OS file hand-off; **a direct launch with a file argument opens it clean (BOM), renders,
 and centres/fits at the real window size**, inspected over WebView2's debugging
 endpoint. A screenshot of the running desktop app is written to `docs/screenshot.png`
@@ -170,6 +171,30 @@ authorise — and then read or overwrite — any diagram-extension file. Both ar
   renderer has no command that takes a path list.
 - Six new Rust tests cover refusal, the recents path, removal, forged entries, legacy
   pruning, and drop filtering/capping.
+
+## 1d. Session recovery
+
+`session.json` in the config directory journals the open tabs, so a crash or a plain
+restart no longer loses an untitled diagram. Verified at three levels:
+
+- **Rust (17 tests):** saving refuses an unauthorised path; clean documents store no
+  content; a file deleted mid-session keeps its unsaved buffer as an untitled document;
+  an oversized buffer is rejected; restore re-reads clean files from disk; a dirty
+  buffer keeps its baseline *and* its recorded mtime, so an offline edit still triggers
+  the overwrite prompt; deleted clean documents are skipped; unreadable, non-diagram and
+  non-canonical persisted paths are refused **and left unauthorised**; a corrupt or
+  oversized file is moved to `session.corrupt.json` instead of being overwritten.
+- **Vitest (4 cases):** the snapshot keeps dirty tabs when it hits the 20-document cap,
+  restores the previous session in the hook, keeps an intentionally empty workspace
+  empty, and a discard flush leaves the dirty buffer out.
+- **Playwright:** typing into a second tab, reloading, and finding both tabs with the
+  edit intact and still marked unsaved.
+- **Desktop (real build):** type an unsaved edit, quit, relaunch, and the edit is back
+  and marked unsaved.
+
+Closing costs were checked too: the window close path flushes the session *after* the
+unsaved guard, and File ▸ Exit (now a real command rather than the OS default) runs the
+same guard and flush instead of terminating the process.
 
 ## 2. Desktop end-to-end (real Windows build)
 

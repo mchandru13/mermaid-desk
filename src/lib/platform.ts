@@ -1,4 +1,12 @@
-import type { AppInfo, AppSettings, DocumentPayload, ExportRequest } from "../types";
+import type {
+  AppInfo,
+  AppSettings,
+  DocumentPayload,
+  ExportRequest,
+  RestoredDocument,
+  RestoredSession,
+  SessionSnapshot,
+} from "../types";
 import { pngSize } from "./export";
 
 /**
@@ -202,6 +210,9 @@ export const platform = {
   loadSettings: () => call<AppSettings>("load_app_settings"),
   saveSettings: (settings: AppSettings) =>
     call<AppSettings>("save_app_settings", { settings }),
+  loadSession: () => call<RestoredSession | null>("load_session"),
+  saveSession: (session: SessionSnapshot) =>
+    call<void>("save_session", { session }),
   appInfo: () => call<AppInfo>("app_info"),
 
   async listenMenu(handler: (action: string) => void): Promise<() => void> {
@@ -237,6 +248,11 @@ export const platform = {
     await getCurrentWindow().destroy();
   },
 
+  async quitApp(): Promise<void> {
+    if (!isTauri()) return;
+    await call<void>("quit_app");
+  },
+
   async setTitle(title: string): Promise<void> {
     if (!isTauri()) {
       document.title = title;
@@ -246,13 +262,13 @@ export const platform = {
     await getCurrentWindow().setTitle(title);
   },
 };
-
 /* ------------------------------------------------------------------ */
 /* Browser mock backend (development, unit tests, Playwright)          */
 /* ------------------------------------------------------------------ */
 
 const MOCK_DOCUMENTS_KEY = "mermaiddesk.mock.documents";
 const MOCK_SETTINGS_KEY = "mermaiddesk.mock.settings";
+const MOCK_SESSION_KEY = "mermaiddesk.mock.session";
 
 interface MockFile {
   content: string;
@@ -383,6 +399,60 @@ async function mockInvoke<T>(command: string, args?: Record<string, unknown>): P
     case "save_app_settings": {
       localStorage.setItem(MOCK_SETTINGS_KEY, JSON.stringify(args?.settings));
       return args?.settings as T;
+    }
+    case "save_session": {
+      // The real command validates paths against the session's authorisations;
+      // the mock has no dialog, so this records the snapshot as-is.
+      localStorage.setItem(MOCK_SESSION_KEY, JSON.stringify(args?.session));
+      return undefined as T;
+    }
+    case "load_session": {
+      const raw = localStorage.getItem(MOCK_SESSION_KEY);
+      if (!raw) return null as T;
+      let stored: SessionSnapshot;
+      try {
+        stored = JSON.parse(raw) as SessionSnapshot;
+      } catch {
+        return null as T;
+      }
+      const storedFiles = readMockFiles();
+      const documents: RestoredDocument[] = [];
+      for (const document of (stored.documents ?? []).slice(0, 20)) {
+        if (document.path) {
+          const file = storedFiles[document.path];
+          if (!file) {
+            if (document.dirty) {
+              documents.push({
+                path: null,
+                name: document.name,
+                content: document.content ?? "",
+                baseline: "",
+                modified: null,
+              });
+            }
+            continue;
+          }
+          documents.push({
+            path: document.path,
+            name: document.name,
+            content: document.dirty ? (document.content ?? "") : file.content,
+            baseline: file.content,
+            modified: document.dirty ? (document.modified ?? file.modified) : file.modified,
+          });
+        } else {
+          const content = document.content ?? "";
+          documents.push({
+            path: null,
+            name: document.name,
+            content,
+            baseline: document.dirty ? "" : content,
+            modified: null,
+          });
+        }
+      }
+      const active =
+        documents.length === 0 ? 0 : Math.min(stored.active ?? 0, documents.length - 1);
+      return { active, documents } as T;
     }
     case "app_info":
       return {

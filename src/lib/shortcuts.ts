@@ -23,7 +23,8 @@ export type ShortcutAction =
   | "toggle-theme"
   | "toggle-preview"
   | "toggle-shortcuts"
-  | "find";
+  | "find"
+  | "quit";
 
 export interface ShortcutDefinition {
   action: ShortcutAction;

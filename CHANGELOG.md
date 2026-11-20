@@ -9,8 +9,23 @@ it for people deciding whether to upgrade (see `docs/RELEASING.md`).
 
 ## [Unreleased]
 
-Nothing yet. Add entries here as changes land; move them into a dated version
-section when you cut a release.
+### Added
+
+- Session recovery: open tabs and unsaved buffers are restored after a restart or a
+  crash, so an untitled diagram is no longer lost. Clean files are re-read from disk;
+  a dirty buffer keeps the modification time it was based on, so an external edit still
+  triggers the overwrite prompt. A confirmed "close without saving" leaves those
+  buffers out of the recovery file instead of bringing them back.
+
+### Fixed
+
+- The Exit menu item and `Ctrl+Q` now run the unsaved-changes guard and flush the
+  recovery session, instead of terminating the process immediately.
+
+### Verification
+
+66 Rust tests, 64 Vitest tests, 25 Playwright scenarios and 45 checks against the
+installed Windows build, including quitting and relaunching with an unsaved edit.
 
 ## [1.1.1] - 2026-11-20
 

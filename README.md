@@ -34,6 +34,9 @@ feature.
 - **Diagnostics** — Mermaid syntax errors with line number and "Go to line".
 - **Recent files**, **auto-save** (for saved files), **word wrap**, **line numbers**,
   and adjustable font size.
+- **Session recovery** — open tabs and unsaved edits are journalled locally and restored
+  after a crash or restart, so an untitled diagram is not lost. Clean files are re-read
+  from disk; closing with "discard changes" stays discarded.
 - **Desktop integration** — `.mmd`/`.mermaid` file associations, drag-and-drop,
   single-instance open, native menu, and persisted window state.
 - **Keyboard shortcuts** — see below or press `F1` in the app.

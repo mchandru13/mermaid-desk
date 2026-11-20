@@ -1,4 +1,9 @@
-import type { DocumentPayload, OpenDocument } from "../types";
+import type {
+  DocumentPayload,
+  OpenDocument,
+  RestoredDocument,
+  SessionSnapshot,
+} from "../types";
 
 let counter = 0;
 
@@ -40,6 +45,57 @@ export function fromPayload(payload: DocumentPayload): OpenDocument {
 
 export function isDirty(document: OpenDocument): boolean {
   return document.content !== document.baseline;
+}
+
+/** Rebuild a tab from a session restored by Rust. */
+export function fromSession(document: RestoredDocument): OpenDocument {
+  return {
+    id: createId(),
+    path: document.path,
+    name: document.name,
+    content: document.content,
+    baseline: document.baseline,
+    modified: document.modified,
+  };
+}
+
+/**
+ * Snapshot the workspace for the recovery file.
+ *
+ * Clean files store only their path, because restoring re-reads the file from
+ * disk. Dirty and untitled buffers store their content.
+ */
+export function sessionSnapshot(
+  documents: OpenDocument[],
+  activeId: string | null,
+  limit = 20,
+): SessionSnapshot {
+  // If there are more tabs than the cap, keep every dirty buffer: losing an
+  // unsaved tab is worse than losing a clean one that can be reopened.
+  const kept = documents
+    .map((document, index) => ({ document, index }))
+    .sort((a, b) => {
+      const byDirty = Number(isDirty(b.document)) - Number(isDirty(a.document));
+      return byDirty !== 0 ? byDirty : a.index - b.index;
+    })
+    .slice(0, limit)
+    .sort((a, b) => a.index - b.index)
+    .map((entry) => entry.document);
+
+  const activeIndex = kept.findIndex((document) => document.id === activeId);
+  return {
+    active: activeIndex === -1 ? 0 : activeIndex,
+    documents: kept.map((document) => {
+      const dirty = isDirty(document);
+      return {
+        path: document.path,
+        name: document.name,
+        content: dirty || document.path === null ? document.content : null,
+        modified: document.modified,
+        dirty,
+      };
+    }),
+  };
 }
 
 export function isUntitled(document: OpenDocument): boolean {

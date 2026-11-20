@@ -2,6 +2,7 @@ mod clipboard;
 mod documents;
 mod error;
 mod menu;
+mod session;
 mod settings;
 
 use serde::Serialize;
@@ -16,6 +17,11 @@ struct AppInfo {
     platform: String,
     config_dir: String,
     document_limit_bytes: u64,
+}
+
+#[tauri::command]
+fn quit_app(app: tauri::AppHandle) {
+    app.exit(0);
 }
 
 #[tauri::command]
@@ -87,6 +93,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             app_info,
+            quit_app,
             documents::read_document,
             documents::open_document,
             documents::save_document,
@@ -94,6 +101,8 @@ pub fn run() {
             documents::export_document,
             documents::export_beside_document,
             clipboard::copy_image_to_clipboard,
+            session::save_session,
+            session::load_session,
             documents::take_pending_documents,
             documents::reveal_document,
             settings::load_app_settings,

@@ -113,6 +113,9 @@ The webview is untrusted. These are load-bearing; do not weaken them for conveni
 - `reveal_document` and export-beside require authorisation like any other path use.
 - Clipboard: PNG only, base64 capped, pixel dimensions checked before decode, decode off
   the main thread, and one long-lived `arboard` handle (X11/Wayland ownership).
+- Session recovery: `save_session` must refuse any path that is not authorised in the
+  current session; `load_session` may authorise only paths found in the validated file.
+  Never let the renderer seed `session.json` — that would turn it into a capability.
 - Mermaid renders with `securityLevel: "strict"` and `htmlLabels: false`, passes through
   DOMPurify and a hardening pass, and lands in the DOM via `dangerouslySetInnerHTML`
   only after both. Do not relax any of that.

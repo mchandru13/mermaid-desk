@@ -1,5 +1,5 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useWorkspace } from "./workspace";
 import { mockSeedFile } from "../lib/platform";
 
@@ -29,6 +29,9 @@ function setup() {
 }
 
 describe("workspace state", () => {
+  beforeEach(() => {
+    localStorage.removeItem("mermaiddesk.mock.session");
+  });
   it("starts with a welcome diagram once ready", async () => {
     const { result } = setup();
     await waitFor(() => expect(result.current.ready).toBe(true));
@@ -159,5 +162,75 @@ describe("workspace state", () => {
     });
 
     expect(notify).toHaveBeenCalledWith(expect.objectContaining({ tone: "error" }));
+  });
+
+  it("restores the previous session, including unsaved content", async () => {
+    mockSeedFile("C:\\mock\\saved.mmd", "graph TD\n A-->B");
+    localStorage.setItem(
+      "mermaiddesk.mock.session",
+      JSON.stringify({
+        active: 1,
+        documents: [
+          { path: "C:\\mock\\saved.mmd", name: "saved.mmd", content: null, dirty: false },
+          { path: null, name: "Draft", content: "graph LR\n A-->B", dirty: true },
+        ],
+      }),
+    );
+
+    const { result } = setup();
+    await waitFor(() => expect(result.current.ready).toBe(true));
+
+    expect(result.current.documents).toHaveLength(2);
+    // The clean file is re-read from disk, not from a stale snapshot.
+    expect(result.current.documents[0].content).toContain("graph TD");
+    expect(result.current.active?.name).toBe("Draft");
+    expect(result.current.active?.content).toContain("graph LR");
+    expect(result.current.hasUnsavedChanges).toBe(true);
+  });
+
+  it("keeps an intentionally empty workspace empty", async () => {
+    localStorage.setItem(
+      "mermaiddesk.mock.session",
+      JSON.stringify({ active: 0, documents: [] }),
+    );
+
+    const { result } = setup();
+    await waitFor(() => expect(result.current.ready).toBe(true));
+    expect(result.current.documents).toHaveLength(0);
+    expect(result.current.active).toBeNull();
+  });
+
+  it("does not resurrect buffers the user chose to discard on close", async () => {
+    const { result } = setup();
+    await waitFor(() => expect(result.current.ready).toBe(true));
+    const id = result.current.active!.id;
+    act(() => result.current.updateContent(id, "graph TD\n A-->B"));
+
+    await act(async () => {
+      await result.current.flushSession({ discardDirty: true });
+    });
+
+    const stored = JSON.parse(
+      localStorage.getItem("mermaiddesk.mock.session") ?? "{}",
+    ) as { documents?: unknown[] };
+    expect(stored.documents).toEqual([]);
+  });
+
+  it("keeps dirty buffers when the session is flushed for recovery", async () => {
+    const { result } = setup();
+    await waitFor(() => expect(result.current.ready).toBe(true));
+    const id = result.current.active!.id;
+    act(() => result.current.updateContent(id, "graph TD\n A-->B"));
+
+    await act(async () => {
+      await result.current.flushSession();
+    });
+
+    const stored = JSON.parse(
+      localStorage.getItem("mermaiddesk.mock.session") ?? "{}",
+    ) as { documents?: Array<{ content?: string; dirty?: boolean }> };
+    expect(stored.documents).toHaveLength(1);
+    expect(stored.documents?.[0].content).toContain("graph TD");
+    expect(stored.documents?.[0].dirty).toBe(true);
   });
 });

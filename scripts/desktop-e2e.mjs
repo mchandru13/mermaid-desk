@@ -19,7 +19,8 @@
  *   9. "Export beside diagram" produces real SVG and PNG files on disk.
  *  10. "Copy PNG" puts a real image (dimensions, opaque background) on the
  *      Windows clipboard, read back with System.Windows.Forms.
- *  11. Launching the executable with a file argument (file association /
+ *  11. An unsaved edit survives quitting and relaunching (session recovery).
+ *  12. Launching the executable with a file argument (file association /
  *      OS hand-off) opens that document, verified by the native window title.
  */
 import { spawn, execFileSync } from "node:child_process";
@@ -42,6 +43,12 @@ const serverUrl = `http://127.0.0.1:${port}`;
 
 const workDir = path.join(os.tmpdir(), `mermaiddesk-desktop-${Date.now()}`);
 const samplePath = path.join(workDir, "desktop-test.mmd");
+const configSessionPath = path.join(
+  process.env.APPDATA ?? "",
+  "dev.mermaiddesk.app",
+  "session.json",
+);
+let sessionBackup = null;
 let failures = 0;
 
 function log(message) {
@@ -312,6 +319,15 @@ async function main() {
   await sleep(500);
 
   await mkdir(workDir, { recursive: true });
+
+  // The app persists its open tabs for crash recovery. Start from a clean slate
+  // and put the developer's own session back when the suite ends.
+  try {
+    sessionBackup = await readFile(configSessionPath);
+  } catch {
+    sessionBackup = null;
+  }
+  await rm(configSessionPath, { force: true });
   const original = "flowchart TD\n    Desktop[Desktop round trip] --> Done[Saved on disk]\n";
   await writeFile(samplePath, original, "utf8");
 
@@ -611,6 +627,45 @@ async function main() {
       `the copied image survives after the command returns (${reRead})`,
     );
 
+    /* ---------- 10. An unsaved edit survives a restart ---------- */
+    await replaceSource(
+      driver,
+      "flowchart LR; Session[SESSIONMARKER] --> Kept[Recovered];",
+      "SESSIONMARKER",
+    );
+    await waitForPreview(driver, "SESSIONMARKER", 15_000);
+    await sleep(1500); // let the session debounce write
+
+    await quitQuietly(driver);
+    driver = null;
+    await sleep(1500);
+
+    driver = await createSession();
+    await driver.manage().setTimeouts({ implicit: 0, pageLoad: 60_000 });
+    await driver.wait(until.elementLocated(By.css(".monaco-editor")), 30_000);
+    await waitForPreview(driver, "SESSIONMARKER", 20_000);
+    check(
+      (await previewText(driver)).includes("SESSIONMARKER"),
+      "an unsaved edit survives quitting and relaunching",
+    );
+
+    let restoredDirty = true;
+    try {
+      await waitForBodyText(driver, "Unsaved changes", 10_000);
+    } catch {
+      restoredDirty = false;
+    }
+    check(restoredDirty, "the recovered document is still marked unsaved");
+
+    // Discard the recovered draft so later checks start from a clean session.
+    await driver.findElement(By.css(".tab.active .tab-close")).click();
+    await driver.wait(
+      until.elementLocated(By.css('[data-testid="unsaved-discard"]')),
+      10_000,
+    );
+    await driver.findElement(By.css('[data-testid="unsaved-discard"]')).click();
+    await sleep(1200);
+
     await quitQuietly(driver);
     driver = null;
     driverProcess.kill();
@@ -682,6 +737,21 @@ async function main() {
   } finally {
     await quitQuietly(driver);
     driverProcess.kill();
+    try {
+      execFileSync("powershell.exe", [
+        "-NoProfile",
+        "-Command",
+        "Stop-Process -Name mermaid-desk,MermaidDesk -Force -ErrorAction SilentlyContinue; exit 0",
+      ]);
+    } catch {
+      // already gone
+    }
+    await sleep(500);
+    if (sessionBackup) {
+      await writeFile(configSessionPath, sessionBackup).catch(() => undefined);
+    } else {
+      await rm(configSessionPath, { force: true }).catch(() => undefined);
+    }
     if (failures > 0) {
       console.error(`\n${failures} desktop check(s) failed`);
       process.exitCode = 1;

@@ -218,6 +218,31 @@ test("ignores a drop with no diagrams", async ({ page }) => {
   );
 });
 
+test("restores tabs and unsaved work after a reload", async ({ page }) => {
+  await appShortcut(page, "n");
+  await expect(page.locator('[role="tab"]')).toHaveCount(2);
+
+  await replaceSource(
+    page,
+    "flowchart LR\n    Draft[RESTOREMARKER] --> Kept[After reload]\n",
+  );
+  await expect(page.locator('[data-testid="preview-canvas"] svg')).toContainText(
+    "RESTOREMARKER",
+  );
+
+  // The session is written on an 800 ms debounce.
+  await page.waitForTimeout(1400);
+  await page.reload();
+
+  await expect(page.locator('[role="tab"]')).toHaveCount(2, { timeout: 20_000 });
+  await expect(page.locator('[data-testid="preview-canvas"] svg')).toContainText(
+    "RESTOREMARKER",
+  );
+  await expect(page.locator('[data-testid="save-state"]')).toContainText(
+    "Unsaved changes",
+  );
+});
+
 test("runs native-menu file actions", async ({ page }) => {
   await appShortcut(page, "n");
   const before = await page.locator('[role="tab"]').count();

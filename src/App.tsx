@@ -140,7 +140,9 @@ export default function App() {
         }
       });
       const offClose = await platform.listenCloseRequest(async () => {
-        return await workspaceRef.current.closeAll();
+        const shouldClose = await workspaceRef.current.closeAll();
+        if (shouldClose) await workspaceRef.current.flushSession({ discardDirty: true });
+        return shouldClose;
       });
       if (disposed) {
         offMenu();
@@ -334,6 +336,13 @@ export default function App() {
         case "find":
           setPreviewVisible(true);
           editorApi.current?.find();
+          break;
+        case "quit":
+          void (async () => {
+            if (!(await workspace.closeAll())) return;
+            await workspace.flushSession({ discardDirty: true });
+            await platform.quitApp();
+          })();
           break;
         default:
           break;

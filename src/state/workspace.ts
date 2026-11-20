@@ -3,17 +3,21 @@ import type {
   AppSettings,
   DocumentPayload,
   OpenDocument,
+  RestoredSession,
+  SessionSnapshot,
 } from "../types";
 import { DEFAULT_SETTINGS } from "../types";
 import {
   applyPayload,
   findOpenDocument,
   fromPayload,
+  fromSession,
   isDirty,
   newDocument,
   nextActiveId,
   pushRecentFile,
   replaceDocument,
+  sessionSnapshot,
   suggestFileName,
 } from "../lib/tabs";
 import { errorCode, errorMessage, platform } from "../lib/platform";
@@ -69,6 +73,7 @@ export interface Workspace {
   ) => Promise<void>;
   updateSettings: (patch: Partial<AppSettings>) => void;
   revealActive: () => Promise<void>;
+  flushSession: (options?: { discardDirty?: boolean }) => Promise<void>;
   hasUnsavedChanges: boolean;
   dirtyDocuments: OpenDocument[];
 }
@@ -97,6 +102,11 @@ export function useWorkspace({ confirm, promptUnsaved, notify }: WorkspaceOption
   const activeIdRef = useRef<string | null>(null);
   const settingsRef = useRef<AppSettings>(DEFAULT_SETTINGS);
   const settingsSaveTimer = useRef<number | null>(null);
+  const sessionSaveFailed = useRef(false);
+  const sessionTimer = useRef<number | null>(null);
+  // Writes go through one queue so a debounced save cannot land after the
+  // close-time flush and resurrect a discarded buffer.
+  const sessionQueue = useRef<Promise<void>>(Promise.resolve());
 
   documentsRef.current = documents;
   activeIdRef.current = activeId;
@@ -453,8 +463,9 @@ export function useWorkspace({ confirm, promptUnsaved, notify }: WorkspaceOption
     }
   }, [notify]);
 
-  // Initial workspace: restore settings, then open anything handed to us by the
-  // operating system. A welcome diagram keeps the first run useful.
+  // Initial workspace: restore settings, then the previous session, then
+  // anything handed to us by the operating system. A welcome diagram keeps the
+  // first run useful.
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -469,6 +480,15 @@ export function useWorkspace({ confirm, promptUnsaved, notify }: WorkspaceOption
         // First run: no settings file yet.
       }
 
+      // A null session means "never saved one"; an empty session means the user
+      // closed every tab last time, which should stay empty.
+      let session: RestoredSession | null = null;
+      try {
+        session = await platform.loadSession();
+      } catch {
+        session = null;
+      }
+
       let pending: DocumentPayload[] = [];
       try {
         pending = await platform.takePendingDocuments();
@@ -477,9 +497,20 @@ export function useWorkspace({ confirm, promptUnsaved, notify }: WorkspaceOption
       }
 
       if (cancelled) return;
+
+      let restored: OpenDocument[] = [];
+      if (session) {
+        restored = session.documents.map(fromSession);
+        const index = Math.min(session.active, Math.max(restored.length - 1, 0));
+        // addPayload reads this ref, so make restored tabs visible for de-duplication.
+        documentsRef.current = restored;
+        setDocuments(restored);
+        setActiveId(restored.length > 0 ? restored[index].id : null);
+      }
+
       if (pending.length > 0) {
         for (const payload of pending) addPayload(payload);
-      } else {
+      } else if (!session) {
         const document = newDocument();
         setDocuments([document]);
         setActiveId(document.id);
@@ -494,11 +525,68 @@ export function useWorkspace({ confirm, promptUnsaved, notify }: WorkspaceOption
     };
   }, [addPayload]);
 
+  // Persist the workspace shortly after it changes. This is the crash-recovery
+  // file; closing the window flushes it explicitly (see flushSession).
+  const queueSessionWrite = useCallback((snapshot: SessionSnapshot) => {
+    sessionQueue.current = sessionQueue.current
+      .catch(() => undefined)
+      .then(() => platform.saveSession(snapshot));
+    return sessionQueue.current;
+  }, []);
+
+  useEffect(() => {
+    if (!ready) return;
+    sessionTimer.current = window.setTimeout(() => {
+      sessionTimer.current = null;
+      void queueSessionWrite(
+        sessionSnapshot(documentsRef.current, activeIdRef.current),
+      )
+        .then(() => {
+          sessionSaveFailed.current = false;
+        })
+        .catch(() => {
+          if (sessionSaveFailed.current) return;
+          sessionSaveFailed.current = true;
+          notify({
+            text: "Could not save the recovery session; unsaved work may not survive a restart.",
+            tone: "error",
+          });
+        });
+    }, 800);
+    return () => {
+      if (sessionTimer.current !== null) {
+        window.clearTimeout(sessionTimer.current);
+        sessionTimer.current = null;
+      }
+    };
+  }, [documents, activeId, ready, notify, queueSessionWrite]);
+
+  const flushSession = useCallback(
+    async (options: { discardDirty?: boolean } = {}) => {
+      if (sessionTimer.current !== null) {
+        window.clearTimeout(sessionTimer.current);
+        sessionTimer.current = null;
+      }
+      // On a confirmed "close without saving" the dirty buffers were discarded,
+      // so they must not come back from the recovery file next launch.
+      const current = options.discardDirty
+        ? documentsRef.current.filter((document) => !isDirty(document))
+        : documentsRef.current;
+      try {
+        // Queued behind any in-flight debounced write, so the last write wins.
+        await queueSessionWrite(sessionSnapshot(current, activeIdRef.current));
+        sessionSaveFailed.current = false;
+      } catch {
+        // Best effort: the app is closing.
+      }
+    },
+    [queueSessionWrite],
+  );
+
   const dirtyDocuments = useMemo(
     () => documents.filter((document) => isDirty(document)),
     [documents],
   );
-
   return {
     documents,
     activeId,
@@ -520,6 +608,7 @@ export function useWorkspace({ confirm, promptUnsaved, notify }: WorkspaceOption
     copyDiagram,
     updateSettings,
     revealActive,
+    flushSession,
     hasUnsavedChanges: dirtyDocuments.length > 0,
     dirtyDocuments,
   };

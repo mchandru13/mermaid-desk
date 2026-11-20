@@ -68,3 +68,34 @@ export interface ExportRequest {
   data: string;
   suggestedName: string;
 }
+
+/** A document returned by `load_session`, ready to become a tab. */
+export interface RestoredDocument {
+  path: string | null;
+  name: string;
+  content: string;
+  /** On-disk content, so a restored buffer keeps its dirty state. */
+  baseline: string;
+  modified: number | null;
+}
+
+export interface RestoredSession {
+  active: number;
+  documents: RestoredDocument[];
+}
+
+/** What the frontend sends to `save_session`. */
+export interface SessionSnapshotDocument {
+  path: string | null;
+  name: string;
+  /** Present for dirty and untitled documents; null for clean files. */
+  content: string | null;
+  /** The mtime the buffer was based on, for conflict detection after a restart. */
+  modified: number | null;
+  dirty: boolean;
+}
+
+export interface SessionSnapshot {
+  active: number;
+  documents: SessionSnapshotDocument[];
+}

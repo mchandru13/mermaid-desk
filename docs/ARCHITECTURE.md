@@ -39,12 +39,13 @@ that validates the request.
 | Path traversal / symlinks | Paths are canonicalised before authorisation and comparison; new files resolve against a canonical parent | `canonical_existing`, `canonical_target` |
 | Oversized / binary input | 8 MiB document cap, UTF-8 validation, 64 MiB export cap | `MAX_DOCUMENT_BYTES`, `MAX_EXPORT_BYTES` |
 | Clipboard abuse | Only PNG is accepted; the payload is capped at 32 MiB base64, 10,000 px per side and 32 MP, and the header is checked before decoding. The frontend scales its raster to that budget, decoding runs off the main thread, and one long-lived `arboard` handle is owned by the app (X11/Wayland serve clipboard data from the owning process). Nothing is written to disk and no webview clipboard capability is granted | `src-tauri/src/clipboard.rs` |
+| Session file as a capability | `save_session` refuses any path not authorised in the current session, so the renderer cannot seed `session.json`; restore may therefore authorise the paths it finds. Content is capped and the file is local-only | `src-tauri/src/session.rs` |
 | Partial writes / corruption | Writes go to a temp file in the destination directory, `sync_all`, then atomic replacement rename; settings keep one backup | `write_atomic`, `settings.rs` |
 | Concurrent modification | mtime conflict detection; the UI asks before overwriting | `save_document` + `App` confirm dialog |
 | Script execution through a diagram | Mermaid `securityLevel: "strict"`, `htmlLabels: false`, DOMPurify SVG profile, then a hardening pass that strips scripts, `on*` handlers, `foreignObject`, remote `href`/`src`, and CSS `@import`/`expression` | `src/lib/render.ts` |
 | Remote code or data | CSP: `script-src 'self'`, `style-src 'self' 'unsafe-inline'` (Mermaid injects scoped styles), `img-src 'self' data: blob:`, `connect-src 'self' ipc: http://ipc.localhost`, `frame-src 'none'`, `object-src 'none'`; no `<iframe>`, no remote fonts | `src-tauri/tauri.conf.json` |
 | Privilege escalation through settings | `Settings::sanitized` clamps sizes/scales, validates theme names, filters non-absolute and duplicate recent paths, caps the list at 15 | `settings.rs` |
-| IPC abuse | Only the twelve commands in `lib.rs` are exposed; each has a narrow input shape | `lib.rs` |
+| IPC abuse | Only the fifteen commands in `lib.rs` are exposed; each has a narrow input shape | `lib.rs` |
 | Drop path spoofing | Drop paths are captured in Rust from the window event; no command accepts a path list from the renderer. `documents-dropped` carries counts, not paths | `lib.rs`, `documents::queue_dropped` |
 | Untrusted window content | Single window, no external navigation, no `window.open` usage, no shell open of web content | `tauri.conf.json` |
 
@@ -129,6 +130,19 @@ pans. The same numbers are used by the toolbar, the status bar, and keyboard sho
 auto-save, preview scale, and up to 15 recent absolute paths. It is written atomically
 with a single backup, and a corrupt file falls back to defaults without being rewritten.
 
+`session.json`, in the same directory, holds the open tabs for recovery: path, name,
+dirty flag and — for dirty or untitled documents — the buffer content. Clean files store
+only their path, because restore re-reads them from disk. The file is written on an
+800 ms debounce and flushed when the window closes or File ▸ Exit is chosen (both run
+the unsaved-changes guard first). A confirmed "close without saving"
+leaves the dirty buffers out, so they do not reappear. Sessions are capped at 20
+documents and 16 MiB of content; a corrupt or oversized file is ignored.
+
+Security: the renderer supplies the snapshot, so every path in it must already be
+authorised in the current session; otherwise the write is refused. Restore is therefore
+allowed to authorise the paths it finds. The file never contains anything the user did
+not open, and it is local-only.
+
 ## 8. OS integration
 
 * **File associations:** `bundle.fileAssociations` registers `.mmd`/`.mermaid`
@@ -159,10 +173,10 @@ with a single backup, and a corrupt file falls back to defaults without being re
 
 | Level | Tool | Coverage |
 | --- | --- | --- |
-| Rust unit/integration | `cargo test` | path validation, authorisation helpers, **reveal authorisation**, **recent-file trust**, **native drop filtering/cap**, Save As and export write logic, atomic writes, size/UTF-8 limits, startup argument filtering, settings round-trip/sanitisation/backup/corruption, verbatim path display |
+| Rust unit/integration | `cargo test` | path validation, authorisation helpers, **reveal authorisation**, **recent-file trust**, **native drop filtering/cap**, **session snapshot validation and restore (dirty/clean/untitled, deleted files, caps, mtime, unauthorised paths)**, Save As and export write logic, atomic writes, size/UTF-8 limits, startup argument filtering, settings round-trip/sanitisation/backup/corruption, verbatim path display |
 | Frontend unit | Vitest + Testing Library | tab model, dirty tracking, recents, diagram type detection, shortcuts, sanitisation/hardening, export helpers, clipboard PNG headers, workspace hook (mock IPC) |
-| Browser E2E | Playwright (production bundle) | render, live edit, diagnostics, save flow, templates, unsaved guard, SVG/PNG/beside export, clipboard copy (opaque and transparent, pixels decoded), zoom/pan/theme, dialogs, multi-tab, drop summary and counts, native-menu actions, OS hand-off, all remote requests blocked |
-| Desktop E2E | tauri-driver + Edge WebDriver + Win32 dialog/menu automation + CDP | launch, native Open, real typing, Save, relaunch/reopen, window-close guard, native menu Save, Save As written and switched, Export dialog, real SVG/PNG files, **Copy PNG read back from the Windows clipboard**, OS hand-off, direct launch at real size (BOM-clean, centred, fitted) |
+| Browser E2E | Playwright (production bundle) | render, live edit, diagnostics, save flow, templates, unsaved guard, SVG/PNG/beside export, clipboard copy (opaque and transparent, pixels decoded), zoom/pan/theme, dialogs, multi-tab, **reload restores tabs and unsaved buffers**, drop summary and counts, native-menu actions, OS hand-off, all remote requests blocked |
+| Desktop E2E | tauri-driver + Edge WebDriver + Win32 dialog/menu automation + CDP | launch, native Open, real typing, Save, relaunch/reopen, window-close guard, native menu Save, Save As written and switched, Export dialog, real SVG/PNG files, **Copy PNG read back from the Windows clipboard**, **quit/relaunch restores an unsaved edit**, OS hand-off, direct launch at real size (BOM-clean, centred, fitted) |
 | Release tooling | `node --test` (`npm run test:scripts`) | changelog section extraction (tag/ref normalisation, similar versions, CRLF, missing section), version bump/check across all four files, real-tree consistency |
 | Dependencies | `npm audit --omit=dev`, OSV against both lockfiles | no production advisories; dev-only and transitive findings are listed in `docs/VERIFICATION.md` |
 | Continuous integration | GitHub Actions (`.github/workflows/`) | typecheck, Vitest, release tooling tests, version consistency, build, Playwright E2E; Rust fmt/clippy/tests on Windows/macOS/Ubuntu; installer bundles and changelog-derived release notes on all three platforms |
