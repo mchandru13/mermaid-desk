@@ -9,6 +9,11 @@ it for people deciding whether to upgrade (see `docs/RELEASING.md`).
 
 ## [Unreleased]
 
+Nothing yet. Add entries here as changes land; move them into a dated version
+section when you cut a release.
+
+## [1.1.0] - 2026-11-20
+
 ### Added
 
 - Copy the current diagram to the clipboard as a PNG with `Ctrl+Shift+C`, or from the
@@ -17,11 +22,22 @@ it for people deciding whether to upgrade (see `docs/RELEASING.md`).
   The image is rasterised locally and written by Rust, so nothing touches disk and the
   webview still has no clipboard or filesystem access.
 
+### Changed
+
+- Release notes are now generated from this changelog, so the release page and the
+  repository cannot drift apart. The installer workflow refuses to build when a tag
+  disagrees with the app version or when the changelog has no section for that version.
+
 ### Verification
 
 40 Rust tests, 56 Vitest tests, 24 Playwright scenarios and 40 checks against the
 installed Windows build, including reading the copied image back from the real
 clipboard and confirming it survives after the command returns.
+
+The clipboard feature was reviewed before release; the review found and fixed four
+cross-platform defects: the X11/Wayland ownership lifetime, a missing Wayland backend,
+a blocking decode on the UI thread, and a raster budget that disagreed with the
+validator.
 
 ## [1.0.0] - 2026-11-20
 
