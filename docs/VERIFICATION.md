@@ -156,11 +156,33 @@ Both workflows were executed on GitHub, not just written:
 
 | Workflow | Run | Result |
 | --- | --- | --- |
-| `ci.yml` | [44701504067](https://github.com/mchandru13/mermaid-desk/actions/runs/44701504067) | **all 5 jobs green** — frontend, browser E2E, Rust on Windows, macOS and Ubuntu |
+| `ci.yml` (push) | [44706084267](https://github.com/mchandru13/mermaid-desk/actions/runs/44706084267) | **all 5 jobs green** — frontend, browser E2E, Rust on Windows, macOS and Ubuntu |
 | `build.yml` (manual) | [44703728464](https://github.com/mchandru13/mermaid-desk/actions/runs/44703728464) | **all 3 bundle jobs green**; artifacts `mermaid-desk-windows`, `mermaid-desk-macos`, `mermaid-desk-linux` |
+| `build.yml` (tag `v1.0.0`) | [44707864055](https://github.com/mchandru13/mermaid-desk/actions/runs/44707864055) | **all 3 bundle jobs green**; draft release created with 6 assets |
 
 The Windows artifact was downloaded and inspected: `MermaidDesk_1.0.0_x64-setup.exe`
 (6.21 MB) and `MermaidDesk_1.0.0_x64_en-US.msi` (7.24 MB).
+
+### Release path
+
+Tagging `v1.0.0` exercised the release branch end to end:
+
+- Draft release `MermaidDesk v1.0.0` created automatically, then published manually.
+- Six assets attached: Windows `.exe` + `.msi`, macOS `.dmg` + `.app.tar.gz`,
+  Linux `.deb` + `.AppImage`.
+- The released Windows installer was downloaded from GitHub, installed silently, and
+  launched. It opened the test diagram cleanly (no spurious dirty flag), rendered,
+  fitted and centred correctly (dx −0.005 px, dy −0.010 px).
+- Released Windows asset hashes differ from the local build (independent toolchain and
+  build timestamps), so the *downloaded* artifacts were verified rather than assumed.
+
+| Released asset | Size | SHA-256 |
+| --- | --- | --- |
+| `MermaidDesk_1.0.0_x64-setup.exe` | 6,512,108 B | `3983301FF62D1C0AC7B4A40BF19A2A27FEFF6265B11C1C5B4EAB6177F23C1719` |
+| `MermaidDesk_1.0.0_x64_en-US.msi` | 7,589,888 B | `40997E940085DF24767BE93627E9F04BAE8D7A5F024C02B84415C8FF63D71771` |
+
+The desktop E2E suite remains a local script because it needs a real Tauri window,
+native dialogs and WebView2.
 
 CI exposed two real portability problems, both fixed:
 
@@ -169,9 +191,8 @@ CI exposed two real portability problems, both fixed:
   directory.
 - `upload-artifact@v7` renamed the `if-no-files-found` value `warning` to `warn`.
 
-Not exercised: the tag-triggered release path of `build.yml` (manual dispatch was used,
-which skips release creation). The desktop E2E suite remains a local script because it
-needs a real Tauri window, native dialogs and WebView2.
+The desktop E2E suite remains a local script because it needs a real Tauri window,
+native dialogs and WebView2.
 
 ## 6. REA evidence for the shipped build
 
