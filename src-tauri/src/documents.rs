@@ -5,9 +5,11 @@
 //! * The webview never receives a general-purpose filesystem capability. All
 //!   reads and writes are funnelled through the commands in this module.
 //! * A path is only readable when the user chose it through a native Open
-//!   dialog, a native Save dialog, the operating system file association, or a
-//!   drag-and-drop over the window. Paths supplied by drag-and-drop and the
-//!   file association must additionally use a known diagram extension.
+//!   dialog, a native Save dialog, the operating system file association, a
+//!   drag-and-drop over the window, or when it is in the persisted recent list
+//!   (which only ever contains paths the user opened). Paths supplied by
+//!   drag-and-drop and the file association must additionally use a known
+//!   diagram extension.
 //! * Writes require a path that has already been authorised in this session,
 //!   so a compromised renderer cannot overwrite arbitrary files.
 //! * Documents are capped at [`MAX_DOCUMENT_BYTES`] and must be valid UTF-8.
@@ -66,7 +68,7 @@ impl DocumentAccess {
         guard.insert(path.to_path_buf());
     }
 
-    fn is_authorized(&self, path: &Path) -> bool {
+    pub(crate) fn is_authorized(&self, path: &Path) -> bool {
         self.authorized
             .lock()
             .expect("document access lock")
@@ -91,14 +93,15 @@ fn extension_of(path: &Path) -> Option<String> {
         .map(|ext| ext.to_ascii_lowercase())
 }
 
-pub fn has_diagram_extension(path: &Path) -> bool {
+pub(crate) fn has_diagram_extension(path: &Path) -> bool {
     extension_of(path)
         .map(|ext| DIAGRAM_EXTENSIONS.contains(&ext.as_str()))
         .unwrap_or(false)
 }
 
 /// Resolve an existing file to its canonical path.
-fn canonical_existing(path: &Path) -> AppResult<PathBuf> {
+/// Canonicalise an existing file, rejecting directories and missing paths.
+pub(crate) fn canonical_existing(path: &Path) -> AppResult<PathBuf> {
     let canonical = fs::canonicalize(path)
         .map_err(|err| AppError::io(format!("Cannot open {}: {err}", path.display())))?;
     let metadata = fs::metadata(&canonical)
@@ -221,24 +224,51 @@ fn ensure_extension(path: PathBuf) -> PathBuf {
 }
 
 /// Read a diagram that the user already made available to the application.
+///
+/// A path is accepted only when the user opened it in this session or when it is
+/// in the persisted recent list (so "Recent files" survives a restart). The
+/// extension alone is not sufficient: the webview must not be able to read an
+/// arbitrary `.md`/`.txt` file by guessing its path.
 #[tauri::command]
 pub fn read_document(
+    app: AppHandle,
     path: String,
     access: State<'_, DocumentAccess>,
 ) -> AppResult<DocumentPayload> {
-    let candidate = PathBuf::from(&path);
-    if !candidate.is_absolute() {
+    let recents = crate::settings::load_settings(&crate::settings::config_dir(&app)?).recent_files;
+    let canonical = read_target(&access, &recents, Path::new(&path))?;
+    authorize_and_read(&access, canonical)
+}
+
+/// Decide whether a path may be read, returning its canonical form.
+fn read_target(access: &DocumentAccess, recents: &[String], path: &Path) -> AppResult<PathBuf> {
+    if !path.is_absolute() {
         return Err(AppError::forbidden(
             "Only absolute file paths are supported.",
         ));
     }
-    let canonical = canonical_existing(&candidate)?;
-    if !access.is_authorized(&canonical) && !has_diagram_extension(&canonical) {
+    let canonical = canonical_existing(path)?;
+
+    let is_recent = has_diagram_extension(&canonical)
+        && recents.iter().any(|entry| {
+            // Fast path: the usual case is the exact string that was stored, and
+            // resolving every recent could touch a slow network share.
+            Path::new(entry) == path || same_file(Path::new(entry), &canonical)
+        });
+    if !access.is_authorized(&canonical) && !is_recent {
         return Err(AppError::forbidden(
-            "That file type can only be opened through the Open dialog.",
+            "That file was not opened in this session and is not in the recent list.",
         ));
     }
-    authorize_and_read(&access, canonical)
+    Ok(canonical)
+}
+
+/// Compare two paths, tolerating entries that no longer resolve (deleted files).
+pub(crate) fn same_file(candidate: &Path, canonical: &Path) -> bool {
+    match canonical_existing(candidate) {
+        Ok(resolved) => resolved == canonical,
+        Err(_) => candidate == canonical,
+    }
 }
 
 /// Native Open dialog followed by the read. Runs on the async runtime, never
@@ -253,7 +283,6 @@ pub async fn open_document(
         .file()
         .set_title("Open Mermaid diagram")
         .add_filter("Mermaid diagram", &DIALOG_FILTERS)
-        .add_filter("All files", &["*"])
         .blocking_pick_file();
 
     let Some(selection) = selection else {
@@ -519,29 +548,24 @@ pub fn collect_paths(args: impl IntoIterator<Item = String>) -> Vec<PathBuf> {
         .collect()
 }
 
-/// Read a file chosen via drag-and-drop. Extensions are restricted because the
-/// webview transmits these paths.
-#[tauri::command]
-pub fn open_dropped_documents(
-    paths: Vec<String>,
-    access: State<'_, DocumentAccess>,
-) -> Vec<DocumentPayload> {
-    open_dropped_impl(&access, paths)
-}
-
-/// Testable implementation of the drag-and-drop reader.
-fn open_dropped_impl(access: &DocumentAccess, paths: Vec<String>) -> Vec<DocumentPayload> {
-    let mut documents = Vec::new();
-    for raw in paths.into_iter().take(32) {
-        let path = PathBuf::from(raw);
-        if !path.is_absolute() || !has_diagram_extension(&path) {
-            continue;
-        }
-        if let Ok(document) = authorize_and_read(access, path) {
-            documents.push(document);
+/// Queue files from a real operating-system drop.
+///
+/// The path list comes from the window event, never from the webview: a command
+/// that accepted paths would let a compromised renderer authorise any
+/// `.mmd`/`.md`/`.txt` file and then read or overwrite it.
+pub fn queue_dropped(access: &DocumentAccess, paths: Vec<PathBuf>) -> (usize, usize) {
+    let mut accepted = 0;
+    let mut ignored = 0;
+    for path in paths {
+        let valid = path.is_absolute() && has_diagram_extension(&path) && path.is_file();
+        if valid && accepted < 32 {
+            access.push_pending(path);
+            accepted += 1;
+        } else {
+            ignored += 1;
         }
     }
-    documents
+    (accepted, ignored)
 }
 
 /// Resolve a path that may be revealed, refusing anything the user did not open
@@ -634,6 +658,61 @@ mod tests {
                 .unwrap_err()
                 .code,
             "io"
+        );
+    }
+
+    #[test]
+    fn reads_require_authorisation_or_a_recent_entry() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("notes.txt");
+        fs::write(&path, "top secret").unwrap();
+        let access = DocumentAccess::default();
+
+        // The old extension fallback let any absolute .txt path through.
+        let error = read_target(&access, &[], &path).unwrap_err();
+        assert_eq!(error.code, "forbidden");
+
+        // A persisted recent entry is enough, so recents survive a restart.
+        let recents = vec![path.to_string_lossy().to_string()];
+        assert_eq!(
+            read_target(&access, &recents, &path).unwrap(),
+            canonical_existing(&path).unwrap()
+        );
+
+        // An authorised path needs no recent entry.
+        access.authorize(&canonical_existing(&path).unwrap());
+        assert!(read_target(&access, &[], &path).is_ok());
+    }
+
+    #[test]
+    fn reads_refuse_non_diagram_recents() {
+        // A 1.1.0 settings file could hold any absolute path; even if one
+        // survives on disk it must not grant a read.
+        let dir = tempfile::tempdir().unwrap();
+        let key = dir.path().join("id_rsa");
+        fs::write(&key, "private").unwrap();
+
+        let access = DocumentAccess::default();
+        let recents = vec![key.to_string_lossy().to_string()];
+        assert_eq!(
+            read_target(&access, &recents, &key).unwrap_err().code,
+            "forbidden"
+        );
+    }
+
+    #[test]
+    fn reads_reject_paths_outside_the_recent_list() {
+        let dir = tempfile::tempdir().unwrap();
+        let allowed = dir.path().join("allowed.mmd");
+        let other = dir.path().join("other.mmd");
+        fs::write(&allowed, "graph TD").unwrap();
+        fs::write(&other, "graph LR").unwrap();
+
+        let access = DocumentAccess::default();
+        let recents = vec![allowed.to_string_lossy().to_string()];
+        assert_eq!(
+            read_target(&access, &recents, &other).unwrap_err().code,
+            "forbidden"
         );
     }
 
@@ -860,21 +939,25 @@ mod tests {
         fs::write(&bad_ext, "MZ").unwrap();
 
         let access = DocumentAccess::default();
-        let documents = open_dropped_impl(
+        let (accepted, ignored) = queue_dropped(
             &access,
             vec![
-                good.to_string_lossy().to_string(),
-                also_good.to_string_lossy().to_string(),
-                bad_ext.to_string_lossy().to_string(),
-                missing.to_string_lossy().to_string(),
-                "relative\\dropped.mmd".to_string(),
+                good.clone(),
+                also_good.clone(),
+                bad_ext,
+                missing,
+                PathBuf::from("relative\\dropped.mmd"),
             ],
         );
 
-        let names: Vec<_> = documents.iter().map(|doc| doc.name.clone()).collect();
-        assert_eq!(names, vec!["dropped.mmd", "notes.md"]);
-        // Dropped documents become writable in the session they were opened in.
-        assert!(access.is_authorized(&canonical_existing(&good).unwrap()));
+        assert_eq!((accepted, ignored), (2, 3));
+        let drained = {
+            let mut pending = access.pending.lock().unwrap();
+            pending.drain(..).collect::<Vec<_>>()
+        };
+        assert_eq!(drained.len(), 2);
+        // Queuing is not authorisation: the read path still decides.
+        assert!(!access.is_authorized(&canonical_existing(&good).unwrap()));
     }
 
     #[test]
@@ -885,9 +968,9 @@ mod tests {
         for index in 0..40 {
             let path = dir.path().join(format!("many-{index}.mmd"));
             fs::write(&path, "graph TD\n").unwrap();
-            paths.push(path.to_string_lossy().to_string());
+            paths.push(path);
         }
-        assert_eq!(open_dropped_impl(&access, paths).len(), 32);
+        assert_eq!(queue_dropped(&access, paths), (32, 8));
     }
 
     #[test]

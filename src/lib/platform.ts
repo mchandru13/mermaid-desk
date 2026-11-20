@@ -87,11 +87,16 @@ export function errorCode(value: unknown): string | null {
  * the browser development/E2E build can deliver the same events the desktop
  * shell does, and so there is a single subscription path.
  */
-type DropHandler = (paths: string[]) => void;
+type DropHandler = (summary: DroppedSummary) => void;
 type MenuHandler = (action: string) => void;
 type PendingHandler = () => void;
 
-const dragDropHandlers = new Set<DropHandler>();
+export interface DroppedSummary {
+  accepted: number;
+  ignored: number;
+}
+
+const droppedHandlers = new Set<DropHandler>();
 const menuHandlers = new Set<MenuHandler>();
 const pendingHandlers = new Set<PendingHandler>();
 
@@ -102,9 +107,28 @@ function makeRegistration<T>(handlers: Set<T>, handler: T): () => void {
   };
 }
 
-/** Deliver a drag-drop event (used by the desktop shell and by tests). */
+/**
+ * Simulate a native drop in the browser backend. Mirrors the Rust handler:
+ * only absolute, existing diagram files are queued, and the renderer receives
+ * counts rather than a path list it could forge.
+ */
 export function emitDragDrop(paths: string[]): void {
-  for (const handler of [...dragDropHandlers]) handler(paths);
+  const files = readMockFiles();
+  let accepted = 0;
+  let ignored = 0;
+
+  for (const path of paths) {
+    const absolute = /^[a-zA-Z]:[\\/]/.test(path) || path.startsWith("/");
+    const diagram = /\.(mmd|mermaid|md|txt)$/i.test(path);
+    if (absolute && diagram && Boolean(files[path]) && accepted < 32) {
+      mockQueuePending([path]);
+      accepted += 1;
+    } else {
+      ignored += 1;
+    }
+  }
+
+  for (const handler of [...droppedHandlers]) handler({ accepted, ignored });
 }
 
 /** Deliver a native-menu action id. */
@@ -173,8 +197,6 @@ export const platform = {
     call<{ width: number; height: number }>("copy_image_to_clipboard", {
       pngBase64,
     }),
-  openDroppedDocuments: (paths: string[]) =>
-    call<DocumentPayload[]>("open_dropped_documents", { paths }),
   takePendingDocuments: () => call<DocumentPayload[]>("take_pending_documents"),
   revealDocument: (path: string) => call<void>("reveal_document", { path }),
   loadSettings: () => call<AppSettings>("load_app_settings"),
@@ -194,18 +216,10 @@ export const platform = {
     return listen("documents-pending", () => handler());
   },
 
-  async listenDragDrop(handler: (paths: string[]) => void): Promise<() => void> {
-    if (!isTauri()) return makeRegistration(dragDropHandlers, handler);
-    const { getCurrentWebview } = await import("@tauri-apps/api/webview");
-    const unlisten = await getCurrentWebview().onDragDropEvent((event) => {
-      if (event.payload.type === "drop") handler(event.payload.paths);
-    });
-    // Keep the same local bus in sync so tests and the real shell share one path.
-    const local = makeRegistration(dragDropHandlers, handler);
-    return () => {
-      local();
-      unlisten();
-    };
+  async listenDropped(handler: (summary: DroppedSummary) => void): Promise<() => void> {
+    if (!isTauri()) return makeRegistration(droppedHandlers, handler);
+    const { listen } = await import("@tauri-apps/api/event");
+    return listen<DroppedSummary>("documents-dropped", (event) => handler(event.payload));
   },
 
   async listenCloseRequest(handler: () => Promise<boolean>): Promise<() => void> {
@@ -301,6 +315,10 @@ async function mockInvoke<T>(command: string, args?: Record<string, unknown>): P
       return payloadFor(path, refreshed[path]) as T;
     }
     case "read_document": {
+      // The real command accepts only paths authorised this session or listed in
+      // the persisted recents. The browser mock has no native dialogs, so a
+      // seeded/saved file is its stand-in for an authorised path; the actual
+      // restriction is covered by Rust tests.
       const path = String(args?.path ?? "");
       const file = readMockFiles()[path];
       if (!file) throw { code: "io", message: `No such file: ${path}` };
@@ -346,18 +364,6 @@ async function mockInvoke<T>(command: string, args?: Record<string, unknown>): P
       if (!size) throw { code: "invalid", message: "That payload is not a PNG image." };
       lastCopy = { data, ...size };
       return { ...size } as T;
-    }
-    case "open_dropped_documents": {
-      // Mirror the Rust allowlist: absolute paths, diagram extensions, max 32.
-      const paths = (args?.paths as string[]) ?? [];
-      return paths
-        .filter((path) => /^[a-zA-Z]:[\\/]/.test(path) || path.startsWith("/"))
-        .filter((path) => /\.(mmd|mermaid|md|txt)$/i.test(path))
-        .slice(0, 32)
-        .map(
-          (path) =>
-            payloadFor(path, files[path] ?? { content: "", modified: Date.now() }) as never,
-        ) as T;
     }
     case "take_pending_documents": {
       // Mirror Rust: drain once, filtering the same way as the OS hand-off.

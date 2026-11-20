@@ -11,10 +11,12 @@ use std::sync::Mutex;
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager};
 
-use crate::documents::MAX_DOCUMENT_BYTES;
+use crate::documents::{
+    canonical_existing, has_diagram_extension, same_file, DocumentAccess, MAX_DOCUMENT_BYTES,
+};
 use crate::error::{AppError, AppResult};
 
-const SETTINGS_VERSION: u32 = 1;
+const SETTINGS_VERSION: u32 = 2;
 const MAX_RECENT_FILES: usize = 15;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -77,6 +79,9 @@ impl Settings {
             .into_iter()
             .filter(|entry| entry.len() < 4096)
             .filter(|entry| Path::new(entry).is_absolute())
+            // A poisoned pre-1.1.1 settings file could list any path. Only
+            // diagram files are ever legitimate recents.
+            .filter(|entry| has_diagram_extension(Path::new(entry)))
             .filter(|entry| seen.insert(entry.clone()))
             .take(MAX_RECENT_FILES)
             .collect();
@@ -141,10 +146,45 @@ pub fn store_settings(config_dir: &Path, settings: Settings) -> AppResult<Settin
     Ok(settings)
 }
 
-fn config_dir(app: &AppHandle) -> AppResult<PathBuf> {
+pub(crate) fn config_dir(app: &AppHandle) -> AppResult<PathBuf> {
     app.path()
         .app_config_dir()
         .map_err(|err| AppError::io(format!("Cannot resolve the configuration folder: {err}")))
+}
+
+/// Keep only recent entries the webview may add.
+///
+/// The list is display data, so removals (a subset of the input) are always
+/// allowed. An *addition* must be a path authorised in this session, or an entry
+/// that was already persisted. Without this, a compromised renderer could write
+/// `recentFiles: [<any path>]` and then read that file through the recent-file
+/// path — defeating the authorisation check in `read_document`.
+pub(crate) fn keep_trusted_recents(
+    incoming: Vec<String>,
+    existing: &[String],
+    access: &DocumentAccess,
+) -> Vec<String> {
+    incoming
+        .into_iter()
+        .filter(|entry| {
+            let path = Path::new(entry);
+            if !path.is_absolute() || !has_diagram_extension(path) {
+                return false;
+            }
+            match canonical_existing(path) {
+                Ok(canonical) => {
+                    access.is_authorized(&canonical)
+                        || existing.iter().any(|old| {
+                            // Avoid resolving every persisted recent (network shares).
+                            old == entry || same_file(Path::new(old), &canonical)
+                        })
+                }
+                // The file no longer resolves (deleted). Keep it only if it was
+                // already a recent, so pruning still works and forging cannot.
+                Err(_) => existing.iter().any(|old| old == entry),
+            }
+        })
+        .collect()
 }
 
 #[tauri::command]
@@ -152,14 +192,26 @@ pub fn load_app_settings(app: AppHandle) -> AppResult<Settings> {
     Ok(load_settings(&config_dir(&app)?))
 }
 
+/// Merge an incoming settings write with the trust rules for recents.
+fn merged_for_write(incoming: Settings, existing: &Settings, access: &DocumentAccess) -> Settings {
+    Settings {
+        recent_files: keep_trusted_recents(incoming.recent_files, &existing.recent_files, access),
+        ..incoming
+    }
+}
+
 #[tauri::command]
 pub fn save_app_settings(
     app: AppHandle,
     state: tauri::State<'_, SettingsState>,
+    access: tauri::State<'_, DocumentAccess>,
     settings: Settings,
 ) -> AppResult<Settings> {
     let _guard = state.write_lock.lock().expect("settings lock");
-    store_settings(&config_dir(&app)?, settings)
+    let dir = config_dir(&app)?;
+    let existing = load_settings(&dir);
+    let settings = merged_for_write(settings, &existing, &access);
+    store_settings(&dir, settings)
 }
 
 #[cfg(test)]
@@ -249,5 +301,99 @@ mod tests {
         };
         let stored = store_settings(dir.path(), settings).unwrap();
         assert_eq!(stored.recent_files.len(), MAX_RECENT_FILES);
+    }
+
+    #[test]
+    fn recents_can_only_add_paths_the_user_opened() {
+        let dir = tempfile::tempdir().unwrap();
+        let opened = dir.path().join("opened.mmd");
+        let forged = dir.path().join("secret.txt");
+        fs::write(&opened, "graph TD").unwrap();
+        fs::write(&forged, "top secret").unwrap();
+
+        let access = DocumentAccess::default();
+        access.authorize(&canonical_existing(&opened).unwrap());
+
+        let kept = keep_trusted_recents(
+            vec![
+                opened.to_string_lossy().to_string(),
+                forged.to_string_lossy().to_string(),
+                "relative/path.mmd".to_string(),
+            ],
+            &[],
+            &access,
+        );
+
+        // The forged absolute path and the relative one are dropped.
+        assert_eq!(kept, vec![opened.to_string_lossy().to_string()]);
+    }
+
+    #[test]
+    fn recents_survive_a_restart_and_can_be_removed() {
+        let dir = tempfile::tempdir().unwrap();
+        let old = dir.path().join("old.mmd");
+        fs::write(&old, "graph TD").unwrap();
+        let old = old.to_string_lossy().to_string();
+
+        // Nothing is authorised in a fresh session; the persisted list is trusted.
+        let access = DocumentAccess::default();
+        let existing = vec![old.clone()];
+        assert_eq!(
+            keep_trusted_recents(vec![old.clone()], &existing, &access),
+            vec![old.clone()]
+        );
+        assert!(keep_trusted_recents(vec![], &existing, &access).is_empty());
+    }
+
+    #[test]
+    fn a_poisoned_settings_write_cannot_add_a_recent() {
+        let dir = tempfile::tempdir().unwrap();
+        let opened = dir.path().join("opened.mmd");
+        let secret = dir.path().join("id_rsa");
+        fs::write(&opened, "graph TD").unwrap();
+        fs::write(&secret, "private").unwrap();
+
+        let access = DocumentAccess::default();
+        access.authorize(&canonical_existing(&opened).unwrap());
+
+        let existing = Settings {
+            recent_files: vec![opened.to_string_lossy().to_string()],
+            ..Settings::default()
+        };
+        let incoming = Settings {
+            theme: "dark".to_string(),
+            recent_files: vec![
+                opened.to_string_lossy().to_string(),
+                secret.to_string_lossy().to_string(),
+            ],
+            ..Settings::default()
+        };
+
+        let merged = merged_for_write(incoming, &existing, &access);
+        assert_eq!(merged.theme, "dark", "unrelated settings still save");
+        assert_eq!(
+            merged.recent_files,
+            vec![opened.to_string_lossy().to_string()],
+            "the forged entry is dropped"
+        );
+    }
+
+    #[test]
+    fn loading_drops_non_diagram_recents() {
+        let settings = Settings {
+            recent_files: vec![
+                "C:\\notes.txt".to_string(),
+                "C:\\keys\\id_rsa".to_string(),
+                "C:\\diagram.mmd".to_string(),
+            ],
+            ..Settings::default()
+        }
+        .sanitized();
+
+        // .txt is an accepted diagram extension; the key file is not.
+        assert_eq!(
+            settings.recent_files,
+            vec!["C:\\notes.txt".to_string(), "C:\\diagram.mmd".to_string()]
+        );
     }
 }

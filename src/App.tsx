@@ -119,8 +119,25 @@ export default function App() {
           notify({ text: errorMessage(error), tone: "error" });
         }
       });
-      const offDrop = await platform.listenDragDrop((paths) => {
-        void workspaceRef.current.openPaths(paths);
+      const offDrop = await platform.listenDropped(async ({ accepted, ignored }) => {
+        try {
+          const payloads = await platform.takePendingDocuments();
+          workspaceRef.current.openPayloads(payloads);
+        } catch (error) {
+          notify({ text: errorMessage(error), tone: "error" });
+          return;
+        }
+        if (accepted === 0) {
+          notify({
+            text: "No .mmd or .mermaid diagram was found in the drop.",
+            tone: "error",
+          });
+        } else if (ignored > 0) {
+          notify({
+            text: `Opened ${accepted} diagram(s); ignored ${ignored} unsupported file(s).`,
+            tone: "info",
+          });
+        }
       });
       const offClose = await platform.listenCloseRequest(async () => {
         return await workspaceRef.current.closeAll();

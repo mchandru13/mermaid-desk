@@ -22,15 +22,21 @@ it for people deciding whether to upgrade (see `docs/RELEASING.md`).
 - CI fails when a production dependency has a moderate-or-higher advisory, and every
   release now publishes SHA-256 checksums in the notes and as `SHA256SUMS.txt`.
 
+- `read_document` now requires authorisation or membership in the persisted recent
+  list, closing the gap where any absolute `.mmd`/`.mermaid`/`.md`/`.txt` path could
+  be read. `save_app_settings` only accepts recents that are authorised this session
+  or already persisted, and persisted recents must now use a diagram extension, so a
+  settings file poisoned by an older build cannot act as a capability. The Open dialog
+  offers only those extensions, so every opened file can be a valid recent.
+- Drag-and-drop paths are captured by Rust from the window event. The webview no
+  longer supplies them: the removed `open_dropped_documents` command could previously
+  authorise, read and then overwrite any `.mmd`/`.md`/`.txt` file on disk.
+
 ### Verification
 
-42 Rust tests, 56 Vitest tests, 24 Playwright scenarios and 40 checks against the
+49 Rust tests, 56 Vitest tests, 24 Playwright scenarios and 40 checks against the
 installed Windows build, including reading the copied image back from the real
 clipboard and confirming it survives after the command returns.
-
-Known gap: `read_document` still accepts any absolute `.mmd`/`.mermaid`/`.md`/`.txt`
-path so recent files survive a restart. Fixing it needs native-side recent-file trust
-(see `docs/VERIFICATION.md`).
 
 ## [1.1.0] - 2026-11-20
 

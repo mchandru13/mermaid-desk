@@ -33,7 +33,7 @@ that validates the request.
 
 | Risk | Control | Where |
 | --- | --- | --- |
-| Renderer reads arbitrary files | A path is readable if the user authorised it, or if it carries a diagram extension (`.mmd`, `.mermaid`, `.md`, `.txt`) so recent files survive a restart. This is the one place the boundary is weaker than the write path; closing it needs native-owned recents | `src-tauri/src/documents.rs` (`read_document`) |
+| Renderer reads arbitrary files | A path is readable only if the user authorised it in this session, or if it appears in the persisted recent list, so recents survive a restart. The webview cannot seed that list: `save_app_settings` keeps only authorised or already-persisted entries | `documents.rs` (`read_target`), `settings.rs` (`keep_trusted_recents`) |
 | Renderer writes arbitrary files | `save_document` requires a path already authorised this session; Save As and every export always show a native dialog owned by Rust | `documents.rs`, `export_document` |
 | Renderer opens Explorer at arbitrary paths | `reveal_document` requires authorisation, like writes and reads-with-dialog | `reveal_target` |
 | Path traversal / symlinks | Paths are canonicalised before authorisation and comparison; new files resolve against a canonical parent | `canonical_existing`, `canonical_target` |
@@ -44,7 +44,8 @@ that validates the request.
 | Script execution through a diagram | Mermaid `securityLevel: "strict"`, `htmlLabels: false`, DOMPurify SVG profile, then a hardening pass that strips scripts, `on*` handlers, `foreignObject`, remote `href`/`src`, and CSS `@import`/`expression` | `src/lib/render.ts` |
 | Remote code or data | CSP: `script-src 'self'`, `style-src 'self' 'unsafe-inline'` (Mermaid injects scoped styles), `img-src 'self' data: blob:`, `connect-src 'self' ipc: http://ipc.localhost`, `frame-src 'none'`, `object-src 'none'`; no `<iframe>`, no remote fonts | `src-tauri/tauri.conf.json` |
 | Privilege escalation through settings | `Settings::sanitized` clamps sizes/scales, validates theme names, filters non-absolute and duplicate recent paths, caps the list at 15 | `settings.rs` |
-| IPC abuse | Only the thirteen commands in `lib.rs` are exposed; each has a narrow input shape | `lib.rs` |
+| IPC abuse | Only the twelve commands in `lib.rs` are exposed; each has a narrow input shape | `lib.rs` |
+| Drop path spoofing | Drop paths are captured in Rust from the window event; no command accepts a path list from the renderer. `documents-dropped` carries counts, not paths | `lib.rs`, `documents::queue_dropped` |
 | Untrusted window content | Single window, no external navigation, no `window.open` usage, no shell open of web content | `tauri.conf.json` |
 
 Trade-off: `style-src 'unsafe-inline'` is required because Mermaid renders a scoped
@@ -134,8 +135,10 @@ with a single backup, and a corrupt file falls back to defaults without being re
   (`text/vnd.mermaid`) in the installer; the first instance reads them from `argv`.
 * **Single instance:** `tauri-plugin-single-instance` forwards paths from a second
   launch to the running window and focuses it.
-* **Drag and drop:** Tauri's window drag-drop event sends absolute paths to
-  `open_dropped_documents`, which applies the extension allowlist.
+* **Drag and drop:** Tauri's window drag-drop event is handled in Rust
+  (`queue_dropped`), which applies the extension allowlist, existence check and 32-file
+  cap before queueing. The window receives only accepted/ignored counts; it never
+  supplies paths.
 * **Native menu:** File / Edit / View / Help items emit command ids to the React layer,
   so menus and shortcuts share one implementation.
 * **Window state:** size/position persisted by `tauri-plugin-window-state`.
@@ -156,9 +159,9 @@ with a single backup, and a corrupt file falls back to defaults without being re
 
 | Level | Tool | Coverage |
 | --- | --- | --- |
-| Rust unit/integration | `cargo test` | path validation, authorisation helpers, **reveal authorisation**, Save As and export write logic, drag-and-drop filtering, atomic writes, size/UTF-8 limits, startup argument filtering, settings round-trip/sanitisation/backup/corruption, verbatim path display |
+| Rust unit/integration | `cargo test` | path validation, authorisation helpers, **reveal authorisation**, **recent-file trust**, **native drop filtering/cap**, Save As and export write logic, atomic writes, size/UTF-8 limits, startup argument filtering, settings round-trip/sanitisation/backup/corruption, verbatim path display |
 | Frontend unit | Vitest + Testing Library | tab model, dirty tracking, recents, diagram type detection, shortcuts, sanitisation/hardening, export helpers, clipboard PNG headers, workspace hook (mock IPC) |
-| Browser E2E | Playwright (production bundle) | render, live edit, diagnostics, save flow, templates, unsaved guard, SVG/PNG/beside export, clipboard copy (opaque and transparent, pixels decoded), zoom/pan/theme, dialogs, multi-tab, drag-and-drop, native-menu actions, OS hand-off, all remote requests blocked |
+| Browser E2E | Playwright (production bundle) | render, live edit, diagnostics, save flow, templates, unsaved guard, SVG/PNG/beside export, clipboard copy (opaque and transparent, pixels decoded), zoom/pan/theme, dialogs, multi-tab, drop summary and counts, native-menu actions, OS hand-off, all remote requests blocked |
 | Desktop E2E | tauri-driver + Edge WebDriver + Win32 dialog/menu automation + CDP | launch, native Open, real typing, Save, relaunch/reopen, window-close guard, native menu Save, Save As written and switched, Export dialog, real SVG/PNG files, **Copy PNG read back from the Windows clipboard**, OS hand-off, direct launch at real size (BOM-clean, centred, fitted) |
 | Release tooling | `node --test` (`npm run test:scripts`) | changelog section extraction (tag/ref normalisation, similar versions, CRLF, missing section), version bump/check across all four files, real-tree consistency |
 | Dependencies | `npm audit --omit=dev`, OSV against both lockfiles | no production advisories; dev-only and transitive findings are listed in `docs/VERIFICATION.md` |

@@ -49,7 +49,6 @@ export interface Workspace {
   ready: boolean;
   createDocument: (content?: string, name?: string) => void;
   openDocument: () => Promise<void>;
-  openPaths: (paths: string[]) => Promise<void>;
   openRecent: (path: string) => Promise<void>;
   openPayloads: (payloads: DocumentPayload[]) => void;
   updateContent: (id: string, content: string) => void;
@@ -182,33 +181,6 @@ export function useWorkspace({ confirm, promptUnsaved, notify }: WorkspaceOption
       notify({ text: errorMessage(error), tone: "error" });
     }
   }, [notify, openPayloads]);
-
-  const openPaths = useCallback(
-    async (paths: string[]) => {
-      if (paths.length === 0) return;
-      try {
-        const payloads = await platform.openDroppedDocuments(paths);
-        if (payloads.length === 0) {
-          notify({
-            text: "No .mmd or .mermaid diagram was found in the drop.",
-            tone: "error",
-          });
-          return;
-        }
-        openPayloads(payloads);
-        const ignored = paths.length - payloads.length;
-        if (ignored > 0) {
-          notify({
-            text: `Opened ${payloads.length} diagram(s); ignored ${ignored} unsupported file(s).`,
-            tone: "info",
-          });
-        }
-      } catch (error) {
-        notify({ text: errorMessage(error), tone: "error" });
-      }
-    },
-    [notify, openPayloads],
-  );
 
   const updateContent = useCallback((id: string, content: string) => {    setDocuments((current) => {
       const target = current.find((document) => document.id === id);
@@ -535,7 +507,6 @@ export function useWorkspace({ confirm, promptUnsaved, notify }: WorkspaceOption
     ready,
     createDocument,
     openDocument,
-    openPaths,
     openRecent,
     openPayloads,
     updateContent,

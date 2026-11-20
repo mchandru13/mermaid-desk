@@ -11,7 +11,7 @@ This report records what was actually executed. Anything not executed is listed 
 
 | Suite | Command | Result |
 | --- | --- | --- |
-| Rust unit/integration | `cargo test` (in `src-tauri`) | **42 passed, 0 failed** |
+| Rust unit/integration | `cargo test` (in `src-tauri`) | **49 passed, 0 failed** |
 | Frontend unit/integration | `npm run test` (Vitest) | **56 passed, 0 failed** across 6 files |
 | Production UI E2E | `npm run build && npm run test:e2e` (Playwright, Chromium 159) | **24 passed, 0 failed** |
 | Desktop E2E | `npm run test:desktop` (tauri-driver + WebView2 + real Rust binary) | **40 checks passed** |
@@ -26,8 +26,10 @@ authorisation refusal, recreating a deleted authorised file,
 **clipboard PNG decoding (signature, base64, zero/oversized dimensions, RGBA output,
 and rejection before the clipboard is touched)**,
 **reveal authorisation (refuses paths that were not opened, relative paths and missing
-files)**,
-**beside-export authorisation/overwrite**, **drag-and-drop filtering and 32-file cap**,
+files)**, **recent-file trust (reads require authorisation or a persisted diagram
+recent; forged and legacy non-diagram recents are dropped)**, **native drop filtering
+(extension, absolute path, existence, 32-file cap, and queuing is not authorisation)**,
+**beside-export authorisation/overwrite**,
 settings round-trip and split clamping, corrupt-file fallback, backup creation,
 recent-file cap.
 
@@ -150,13 +152,22 @@ Other changes, covered by the suites above:
   against the published 1.1.0 assets (the `.exe` hash matches the table below), and
   the 1.1.0 notes now carry the block.
 
-### Known gap
+### Read and drop boundary
 
-`read_document` accepts any absolute `.mmd`/`.mermaid`/`.md`/`.txt` path because recent
-files must open after a restart. Exploiting it requires script execution in the webview
-first, and exfiltration has no channel (CSP, no clipboard read, no unauthenticated
-write), but it is weaker than the documented model. Closing it needs native-owned
-recents so `read_document` can require authorisation.
+`read_document` used to accept any absolute `.mmd`/`.mermaid`/`.md`/`.txt` path, and
+`open_dropped_documents` accepted a path list from the renderer, which let a script
+authorise — and then read or overwrite — any diagram-extension file. Both are closed:
+
+- Reads require authorisation or membership in the persisted recent list
+  (`read_target`), and only diagram extensions qualify.
+- `save_app_settings` refuses recents that are neither authorised nor already
+  persisted (`merged_for_write` → `keep_trusted_recents`), and `sanitized` drops
+  non-diagram entries, so a legacy poisoned settings file cannot grant a read.
+- Drop paths now come from Tauri's window event; `queue_dropped` validates and queues
+  them, and the `documents-dropped` event carries only accepted/ignored counts. The
+  renderer has no command that takes a path list.
+- Six new Rust tests cover refusal, the recents path, removal, forged entries, legacy
+  pruning, and drop filtering/capping.
 
 ## 2. Desktop end-to-end (real Windows build)
 
@@ -342,10 +353,10 @@ Limitations encountered:
 
 - **Drag-and-drop gesture:** the OS-level drag from Explorer into the window is not
   automated (it needs real OLE drag input, which this session blocks). The pieces it
-  feeds are covered: Rust `open_dropped_impl` filtering (absolute paths, extension
-  allowlist, missing files, 32-file cap) and the frontend wiring through the same
-  `drag-drop` event path Tauri delivers, driven in Playwright with mixed valid/invalid
-  paths and an empty drop.
+  feeds are covered: Rust `queue_dropped` (absolute paths, extension allowlist, missing
+  files, 32-file cap) and the frontend wiring through the `documents-dropped` event,
+  driven in Playwright with mixed valid/invalid paths and an empty drop. The native
+  `WindowEvent::DragDrop` path itself still needs a manual Explorer/Finder check.
 - **Keyboard shortcuts in the packaged app:** the desktop script uses real key events
   for Ctrl+A and text entry, and the native File > Save menu. The complete shortcut map
   is verified in Chromium (Playwright); the desktop build shares that handler code.

@@ -63,6 +63,19 @@ pub fn run() {
         .manage(documents::DocumentAccess::default())
         .manage(settings::SettingsState::default())
         .manage(clipboard::ClipboardState::default())
+        // Drag-and-drop paths are captured here, in Rust. Accepting a path list
+        // from the webview would let a compromised renderer authorise (and then
+        // read or overwrite) any diagram-extension file on disk.
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::DragDrop(tauri::DragDropEvent::Drop { paths, .. }) = event {
+                let access = window.state::<documents::DocumentAccess>();
+                let (accepted, ignored) = documents::queue_dropped(&access, paths.clone());
+                let _ = window.app_handle().emit(
+                    "documents-dropped",
+                    serde_json::json!({ "accepted": accepted, "ignored": ignored }),
+                );
+            }
+        })
         .setup(|app| {
             let args: Vec<String> = std::env::args().collect();
             let access = app.state::<documents::DocumentAccess>();
@@ -82,7 +95,6 @@ pub fn run() {
             documents::export_beside_document,
             clipboard::copy_image_to_clipboard,
             documents::take_pending_documents,
-            documents::open_dropped_documents,
             documents::reveal_document,
             settings::load_app_settings,
             settings::save_app_settings,
