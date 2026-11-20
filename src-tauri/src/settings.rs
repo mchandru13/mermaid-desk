@@ -174,12 +174,21 @@ mod tests {
         assert!(!settings.auto_save);
     }
 
+    /// An absolute path for the current platform. The settings filter drops
+    /// entries that are not absolute, and `C:\...` is not absolute on Unix.
+    fn absolute_path(name: &str) -> String {
+        std::env::temp_dir()
+            .join(name)
+            .to_string_lossy()
+            .into_owned()
+    }
+
     #[test]
     fn roundtrips_through_disk() {
         let dir = tempfile::tempdir().unwrap();
         let settings = Settings {
             theme: "dark".to_string(),
-            recent_files: vec!["C:\\diagrams\\one.mmd".to_string()],
+            recent_files: vec![absolute_path("one.mmd")],
             ..Settings::default()
         };
         let stored = store_settings(dir.path(), settings.clone()).unwrap();
@@ -190,16 +199,13 @@ mod tests {
 
     #[test]
     fn sanitizes_hand_edited_values() {
+        let keep = absolute_path("a.mmd");
         let raw = Settings {
             theme: "neon".to_string(),
             editor_font_size: 200,
             preview_scale: f64::NAN,
             editor_split: 4.0,
-            recent_files: vec![
-                "C:\\a.mmd".to_string(),
-                "C:\\a.mmd".to_string(),
-                "relative/path.mmd".to_string(),
-            ],
+            recent_files: vec![keep.clone(), keep.clone(), "relative/path.mmd".to_string()],
             ..Settings::default()
         };
         let clean = raw.sanitized();
@@ -207,7 +213,7 @@ mod tests {
         assert_eq!(clean.editor_font_size, 28);
         assert_eq!(clean.preview_scale, 1.0);
         assert_eq!(clean.editor_split, 20.0);
-        assert_eq!(clean.recent_files, vec!["C:\\a.mmd".to_string()]);
+        assert_eq!(clean.recent_files, vec![keep]);
     }
 
     #[test]
@@ -237,7 +243,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let settings = Settings {
             recent_files: (0..40)
-                .map(|index| format!("C:\\diagrams\\{index}.mmd"))
+                .map(|index| absolute_path(&format!("{index}.mmd")))
                 .collect(),
             ..Settings::default()
         };
