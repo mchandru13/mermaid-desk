@@ -9,8 +9,19 @@ it for people deciding whether to upgrade (see `docs/RELEASING.md`).
 
 ## [Unreleased]
 
-Nothing yet. Add entries here as changes land; move them into a dated version
-section when you cut a release.
+### Added
+
+- Copy the current diagram to the clipboard as a PNG with `Ctrl+Shift+C`, or from the
+  Export menu. An opaque variant uses the theme background so it stays readable
+  wherever it is pasted; a transparent variant is available for matching backgrounds.
+  The image is rasterised locally and written by Rust, so nothing touches disk and the
+  webview still has no clipboard or filesystem access.
+
+### Verification
+
+40 Rust tests, 56 Vitest tests, 24 Playwright scenarios and 40 checks against the
+installed Windows build, including reading the copied image back from the real
+clipboard and confirming it survives after the command returns.
 
 ## [1.0.0] - 2026-11-20
 

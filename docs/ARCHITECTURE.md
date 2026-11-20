@@ -37,12 +37,13 @@ that validates the request.
 | Renderer writes arbitrary files | `save_document` requires a path already authorised this session; Save As and every export always show a native dialog owned by Rust | `documents.rs`, `export_document` |
 | Path traversal / symlinks | Paths are canonicalised before authorisation and comparison; new files resolve against a canonical parent | `canonical_existing`, `canonical_target` |
 | Oversized / binary input | 8 MiB document cap, UTF-8 validation, 64 MiB export cap | `MAX_DOCUMENT_BYTES`, `MAX_EXPORT_BYTES` |
+| Clipboard abuse | Only PNG is accepted; the payload is capped at 32 MiB base64, 10,000 px per side and 32 MP, and the header is checked before decoding. The frontend scales its raster to that budget, decoding runs off the main thread, and one long-lived `arboard` handle is owned by the app (X11/Wayland serve clipboard data from the owning process). Nothing is written to disk and no webview clipboard capability is granted | `src-tauri/src/clipboard.rs` |
 | Partial writes / corruption | Writes go to a temp file in the destination directory, `sync_all`, then atomic replacement rename; settings keep one backup | `write_atomic`, `settings.rs` |
 | Concurrent modification | mtime conflict detection; the UI asks before overwriting | `save_document` + `App` confirm dialog |
 | Script execution through a diagram | Mermaid `securityLevel: "strict"`, `htmlLabels: false`, DOMPurify SVG profile, then a hardening pass that strips scripts, `on*` handlers, `foreignObject`, remote `href`/`src`, and CSS `@import`/`expression` | `src/lib/render.ts` |
 | Remote code or data | CSP: `script-src 'self'`, `style-src 'self' 'unsafe-inline'` (Mermaid injects scoped styles), `img-src 'self' data: blob:`, `connect-src 'self' ipc: http://ipc.localhost`, `frame-src 'self' data:`, `object-src 'none'`; no `<iframe>`, no remote fonts | `src-tauri/tauri.conf.json` |
 | Privilege escalation through settings | `Settings::sanitized` clamps sizes/scales, validates theme names, filters non-absolute and duplicate recent paths, caps the list at 15 | `settings.rs` |
-| IPC abuse | Only the twelve commands in `lib.rs` are exposed; each has a narrow input shape | `lib.rs` |
+| IPC abuse | Only the thirteen commands in `lib.rs` are exposed; each has a narrow input shape | `lib.rs` |
 | Untrusted window content | Single window, no external navigation, no `window.open` usage, no shell open of web content | `tauri.conf.json` |
 
 Trade-off: `style-src 'unsafe-inline'` is required because Mermaid renders a scoped
@@ -108,6 +109,15 @@ pans. The same numbers are used by the toolbar, the status bar, and keyboard sho
   (`export_beside_document`). That folder was already authorised by the Open/Save
   dialog, and an existing file produces a confirmation prompt instead of a silent
   overwrite. This is also the path used by the automated desktop verification.
+* **Clipboard:** the same PNG the exporter produces is sent to Rust as base64;
+  `copy_image_to_clipboard` validates it, decodes it to RGBA and writes it with
+  `arboard`. The frontend never gets clipboard access and the image is never written to
+  disk. `Ctrl+Shift+C` copies; the transparent variant is in the Export menu.
+  Two platform details matter and are handled: the frontend caps the raster at the same
+  32 MP budget Rust enforces, and the `arboard::Clipboard` is application-owned rather
+  than created per call, because on X11/Wayland the clipboard content is served by the
+  owning process and disappears when the handle is dropped. The Linux build enables
+  `wayland-data-control` so a pure Wayland session works.
 * No mermaid.ink, Kroki, or any hosted renderer is used.
 
 ## 7. Settings and recents
@@ -146,9 +156,9 @@ with a single backup, and a corrupt file falls back to defaults without being re
 | Level | Tool | Coverage |
 | --- | --- | --- |
 | Rust unit/integration | `cargo test` | path validation, authorisation helpers, Save As and export write logic, drag-and-drop filtering, atomic writes, size/UTF-8 limits, startup argument filtering, settings round-trip/sanitisation/backup/corruption, verbatim path display |
-| Frontend unit | Vitest + Testing Library | tab model, dirty tracking, recents, diagram type detection, shortcuts, sanitisation/hardening, export helpers, workspace hook (mock IPC) |
-| Browser E2E | Playwright (production bundle) | render, live edit, diagnostics, save flow, templates, unsaved guard, SVG/PNG/beside export, zoom/pan/theme, dialogs, multi-tab, drag-and-drop, native-menu actions, OS hand-off, all remote requests blocked |
-| Desktop E2E | tauri-driver + Edge WebDriver + Win32 dialog/menu automation + CDP | launch, native Open, real typing, Save, relaunch/reopen, window-close guard, native menu Save, Save As written and switched, Export dialog, real SVG/PNG files, OS hand-off, direct launch at real size (BOM-clean, centred, fitted) |
+| Frontend unit | Vitest + Testing Library | tab model, dirty tracking, recents, diagram type detection, shortcuts, sanitisation/hardening, export helpers, clipboard PNG headers, workspace hook (mock IPC) |
+| Browser E2E | Playwright (production bundle) | render, live edit, diagnostics, save flow, templates, unsaved guard, SVG/PNG/beside export, clipboard copy (opaque and transparent, pixels decoded), zoom/pan/theme, dialogs, multi-tab, drag-and-drop, native-menu actions, OS hand-off, all remote requests blocked |
+| Desktop E2E | tauri-driver + Edge WebDriver + Win32 dialog/menu automation + CDP | launch, native Open, real typing, Save, relaunch/reopen, window-close guard, native menu Save, Save As written and switched, Export dialog, real SVG/PNG files, **Copy PNG read back from the Windows clipboard**, OS hand-off, direct launch at real size (BOM-clean, centred, fitted) |
 | Release tooling | `node --test` (`npm run test:scripts`) | changelog section extraction (tag/ref normalisation, similar versions, CRLF, missing section), version bump/check across all four files, real-tree consistency |
 | Continuous integration | GitHub Actions (`.github/workflows/`) | typecheck, Vitest, release tooling tests, version consistency, build, Playwright E2E; Rust fmt/clippy/tests on Windows/macOS/Ubuntu; installer bundles and changelog-derived release notes on all three platforms |
 | Installer | Silent NSIS install + registry/window inspection | per-user install, uninstall entry, file associations, installed launch, single-instance hand-off |

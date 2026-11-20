@@ -17,7 +17,7 @@ import {
   suggestFileName,
 } from "../lib/tabs";
 import { errorCode, errorMessage, platform } from "../lib/platform";
-import { exportFileName, svgToPngBase64, withBackground } from "../lib/export";
+import { CLIPBOARD_MAX_PIXELS, exportFileName, svgToPngBase64, withBackground } from "../lib/export";
 import { resolveTheme } from "../lib/theme";
 
 export interface Notify {
@@ -64,6 +64,10 @@ export interface Workspace {
     svg: string,
     options?: { beside?: boolean; transparent?: boolean },
   ) => Promise<void>;
+  copyDiagram: (
+    svg: string,
+    options?: { transparent?: boolean },
+  ) => Promise<void>;
   updateSettings: (patch: Partial<AppSettings>) => void;
   revealActive: () => Promise<void>;
   hasUnsavedChanges: boolean;
@@ -71,6 +75,18 @@ export interface Workspace {
 }
 
 const MAX_RECENT = 12;
+
+/**
+ * Background that matches the theme the diagram was rendered with, so a pasted
+ * PNG has the same contrast as the preview.
+ */
+function themedBackground(theme: AppSettings["theme"]): string {
+  const prefersDark =
+    typeof window !== "undefined" && window.matchMedia
+      ? window.matchMedia("(prefers-color-scheme: dark)").matches
+      : false;
+  return resolveTheme(theme, prefersDark) === "dark" ? "#0d1117" : "#ffffff";
+}
 
 export function useWorkspace({ confirm, promptUnsaved, notify }: WorkspaceOptions): Workspace {
   const [documents, setDocuments] = useState<OpenDocument[]>([]);
@@ -350,12 +366,7 @@ export function useWorkspace({ confirm, promptUnsaved, notify }: WorkspaceOption
       }
       try {
         const name = exportFileName(document.name, kind);
-        const prefersDark =
-          typeof window !== "undefined" && window.matchMedia
-            ? window.matchMedia("(prefers-color-scheme: dark)").matches
-            : false;
-        const resolved = resolveTheme(settingsRef.current.theme, prefersDark);
-        const background = resolved === "dark" ? "#0d1117" : "#ffffff";
+        const background = themedBackground(settingsRef.current.theme);
 
         let data = svg;
         if (kind === "png") {
@@ -423,6 +434,39 @@ export function useWorkspace({ confirm, promptUnsaved, notify }: WorkspaceOption
       persistSettings({ ...settingsRef.current, ...patch });
     },
     [persistSettings],
+  );
+
+  const copyDiagram = useCallback(
+    async (svg: string, options: { transparent?: boolean } = {}) => {
+      if (!svg.trim()) {
+        notify({
+          text: "There is nothing to copy until the diagram renders.",
+          tone: "error",
+        });
+        return;
+      }
+      try {
+        // Same renderer and theme as the preview; an empty background leaves
+        // the canvas transparent instead of filling it.
+        const background = options.transparent
+          ? ""
+          : themedBackground(settingsRef.current.theme);
+        // The clipboard path must stay inside Rust's size budget, so the raster
+        // is scaled down rather than rejected for a large-but-valid diagram.
+        const png = await svgToPngBase64(svg, {
+          background,
+          maxPixels: CLIPBOARD_MAX_PIXELS,
+        });
+        const { width, height } = await platform.copyImage(png);
+        notify({
+          text: `Copied PNG (${width} × ${height}) to the clipboard`,
+          tone: "success",
+        });
+      } catch (error) {
+        notify({ text: `Copy failed: ${errorMessage(error)}`, tone: "error" });
+      }
+    },
+    [notify],
   );
 
   const revealActive = useCallback(async () => {
@@ -502,6 +546,7 @@ export function useWorkspace({ confirm, promptUnsaved, notify }: WorkspaceOption
     cycleDocument,
     moveDocument,
     exportDiagram,
+    copyDiagram,
     updateSettings,
     revealActive,
     hasUnsavedChanges: dirtyDocuments.length > 0,

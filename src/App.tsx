@@ -218,24 +218,40 @@ export default function App() {
   /* Actions                                                        */
   /* -------------------------------------------------------------- */
 
+  const currentExportSvg = useCallback(() => {
+    // Use the live element so the output is cropped to the drawn artwork
+    // (Mermaid's own viewBox pads asymmetrically and can clip).
+    const live = document.querySelector<SVGSVGElement>(
+      '[data-testid="preview-canvas"] svg',
+    );
+    return live ? tightenSvgForExport(live) : renderedSvg;
+  }, [renderedSvg]);
+
   const doExport = useCallback(
     (
       kind: "svg" | "png",
       options: { beside?: boolean; transparent?: boolean } = {},
     ) => {
-      // Export from the live element so the file is cropped to the drawn
-      // artwork (Mermaid's own viewBox pads asymmetrically and can clip).
-      const live = document.querySelector<SVGSVGElement>(
-        '[data-testid="preview-canvas"] svg',
-      );
-      const exportSvg = live ? tightenSvgForExport(live) : renderedSvg;
+      const exportSvg = currentExportSvg();
       if (!exportSvg.trim()) {
         notify({ text: "Fix the diagram before exporting.", tone: "error" });
         return;
       }
       void workspace.exportDiagram(kind, exportSvg, options);
     },
-    [notify, renderedSvg, workspace],
+    [currentExportSvg, notify, workspace],
+  );
+
+  const doCopy = useCallback(
+    (options: { transparent?: boolean } = {}) => {
+      const exportSvg = currentExportSvg();
+      if (!exportSvg.trim()) {
+        notify({ text: "Fix the diagram before copying it.", tone: "error" });
+        return;
+      }
+      void workspace.copyDiagram(exportSvg, options);
+    },
+    [currentExportSvg, notify, workspace],
   );
 
   const toggleTheme = useCallback(() => {
@@ -274,6 +290,9 @@ export default function App() {
         case "export-png":
           doExport("png");
           break;
+        case "copy-png":
+          doCopy();
+          break;
         case "zoom-in":
           setZoom((value) => Math.min(8, value * 1.25));
           break;
@@ -303,7 +322,7 @@ export default function App() {
           break;
       }
     },
-    [doExport, fitScale, notify, toggleTheme, workspace],
+    [doCopy, doExport, fitScale, notify, toggleTheme, workspace],
   );
   runActionRef.current = runAction;
 
@@ -397,6 +416,8 @@ export default function App() {
         onExport={doExport}
         onExportBeside={(kind) => doExport(kind, { beside: true })}
         onExportTransparentSvg={() => doExport("svg", { transparent: true })}
+        onCopyPng={() => doCopy()}
+        onCopyPngTransparent={() => doCopy({ transparent: true })}
         onShowTemplates={() => setShowTemplates(true)}
         onShowShortcuts={() => setShowShortcuts(true)}
         onShowAbout={() => setShowAbout(true)}

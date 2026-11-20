@@ -1,6 +1,7 @@
 import type { AppSettings, ResolvedTheme } from "../types";
 import { Dropdown, DropdownItem, DropdownSeparator } from "./Dropdown";
 import {
+  ClipboardIcon,
   DownloadIcon,
   FilePlusIcon,
   FolderOpenIcon,
@@ -32,6 +33,8 @@ interface ToolbarProps {
   onExport: (kind: "svg" | "png") => void;
   onExportBeside: (kind: "svg" | "png") => void;
   onExportTransparentSvg: () => void;
+  onCopyPng: () => void;
+  onCopyPngTransparent: () => void;
   onShowTemplates: () => void;
   onShowShortcuts: () => void;
   onShowAbout: () => void;
@@ -62,6 +65,8 @@ export function Toolbar({
   onExport,
   onExportBeside,
   onExportTransparentSvg,
+  onCopyPng,
+  onCopyPngTransparent,
   onShowTemplates,
   onShowShortcuts,
   onShowAbout,
@@ -217,6 +222,25 @@ export function Toolbar({
                 hint={resolvedTheme === "dark" ? "light text" : "dark text"}
               >
                 <ImageIcon size={14} /> Export SVG (transparent)…
+              </DropdownItem>
+              <DropdownSeparator />
+              <DropdownItem
+                onClick={() => {
+                  onCopyPng();
+                  close();
+                }}
+                hint="Ctrl+Shift+C"
+              >
+                <ClipboardIcon size={14} /> Copy PNG
+              </DropdownItem>
+              <DropdownItem
+                onClick={() => {
+                  onCopyPngTransparent();
+                  close();
+                }}
+                hint="no background"
+              >
+                <ClipboardIcon size={14} /> Copy PNG (transparent)
               </DropdownItem>
               <DropdownSeparator />
               <DropdownItem

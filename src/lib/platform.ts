@@ -1,4 +1,5 @@
 import type { AppInfo, AppSettings, DocumentPayload, ExportRequest } from "../types";
+import { pngSize } from "./export";
 
 /**
  * Platform bridge.
@@ -126,6 +127,7 @@ declare global {
       seedFile: (path: string, content: string) => void;
       queuePending: (paths: string[]) => void;
       getLastExport: () => { kind: string; data: string; suggestedName: string } | null;
+      getLastCopy: () => { data: string; width: number; height: number } | null;
     };
   }
 }
@@ -138,6 +140,7 @@ if (!isTauri() && typeof window !== "undefined") {
     seedFile: (path: string, content: string) => mockSeedFile(path, content),
     queuePending: (paths: string[]) => mockQueuePending(paths),
     getLastExport: () => lastExport,
+    getLastCopy: () => lastCopy,
   };
 }
 
@@ -165,6 +168,10 @@ export const platform = {
       kind,
       data,
       overwrite,
+    }),
+  copyImage: (pngBase64: string) =>
+    call<{ width: number; height: number }>("copy_image_to_clipboard", {
+      pngBase64,
     }),
   openDroppedDocuments: (paths: string[]) =>
     call<DocumentPayload[]>("open_dropped_documents", { paths }),
@@ -279,6 +286,9 @@ export function mockQueuePending(paths: string[]): void {
 /** Most recent export payload, exposed to the browser test harness. */
 let lastExport: { kind: string; data: string; suggestedName: string } | null = null;
 
+/** Most recent clipboard payload, exposed to the browser test harness. */
+let lastCopy: { data: string; width: number; height: number } | null = null;
+
 async function mockInvoke<T>(command: string, args?: Record<string, unknown>): Promise<T> {
   const files = readMockFiles();
   switch (command) {
@@ -327,6 +337,15 @@ async function mockInvoke<T>(command: string, args?: Record<string, unknown>): P
         suggestedName: documentPath,
       };
       return documentPath.replace(/\.(mmd|mermaid|md|txt)$/i, `.${String(args?.kind)}`) as T;
+    }
+    case "copy_image_to_clipboard": {
+      // Mirror the Rust guard: the payload must be a real PNG. The browser
+      // backend records it instead of touching the OS clipboard.
+      const data = String(args?.pngBase64 ?? "");
+      const size = pngSize(data);
+      if (!size) throw { code: "invalid", message: "That payload is not a PNG image." };
+      lastCopy = { data, ...size };
+      return { ...size } as T;
     }
     case "open_dropped_documents": {
       // Mirror the Rust allowlist: absolute paths, diagram extensions, max 32.

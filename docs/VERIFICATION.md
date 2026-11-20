@@ -1,4 +1,4 @@
-?# Verification report
+# Verification report
 
 Date: 2026-11-20
 Host: Windows 11 x64 (WebView2 157.0.4341.60), Node 24.13.0, Rust 1.100.0 (MSVC),
@@ -11,10 +11,10 @@ This report records what was actually executed. Anything not executed is listed 
 
 | Suite | Command | Result |
 | --- | --- | --- |
-| Rust unit/integration | `cargo test` (in `src-tauri`) | **30 passed, 0 failed** |
-| Frontend unit/integration | `npm run test` (Vitest) | **49 passed, 0 failed** across 6 files |
-| Production UI E2E | `npm run build && npm run test:e2e` (Playwright, Chromium 159) | **22 passed, 0 failed** |
-| Desktop E2E | `npm run test:desktop` (tauri-driver + WebView2 + real Rust binary) | **35 checks passed** |
+| Rust unit/integration | `cargo test` (in `src-tauri`) | **40 passed, 0 failed** |
+| Frontend unit/integration | `npm run test` (Vitest) | **56 passed, 0 failed** across 6 files |
+| Production UI E2E | `npm run build && npm run test:e2e` (Playwright, Chromium 159) | **24 passed, 0 failed** |
+| Desktop E2E | `npm run test:desktop` (tauri-driver + WebView2 + real Rust binary) | **40 checks passed** |
 | Type check | `npx tsc --noEmit` | clean |
 
 Rust coverage: path canonicalisation, verbatim-path display, extension allowlists,
@@ -23,20 +23,25 @@ atomic replace, missing-directory creation, 8 MiB limit (read and write), invali
 authorisation refusal, recreating a deleted authorised file,
 **Save As write logic (extension defaulting, oversized content, missing folder)**,
 **export encode/write (SVG, base64 PNG, bad payload, unknown format)**,
+**clipboard PNG decoding (signature, base64, zero/oversized dimensions, RGBA output,
+and rejection before the clipboard is touched)**,
 **beside-export authorisation/overwrite**, **drag-and-drop filtering and 32-file cap**,
 settings round-trip and split clamping, corrupt-file fallback, backup creation,
 recent-file cap.
 
 Frontend coverage: tab model and dirty baselines, path comparison (Windows/macOS),
 recents, diagram-type detection, shortcut mapping, SVG sanitisation/hardening, parse
--error line extraction, export naming/backgrounds/base64 lengths, workspace controller
+-error line extraction, export naming/backgrounds/base64 lengths, **clipboard PNG
+headers and the copy flow**, workspace controller
 (open, edit, save-as, reopen, close guards, cycling, **dropped paths**, **menu actions**).
 
 Playwright scenarios: welcome render, live edits + error recovery, save flow, template
 tab, unsaved-change guard (Cancel/Discard), SVG+PNG+beside export, zoom/fit/pan/theme,
 shortcuts+settings, multi-tab switching, drag-and-drop (mixed valid/invalid paths),
 empty drop, native-menu actions (new/save/close), OS hand-off after startup, split
-persistence, and a run with **every non-localhost request aborted**.
+persistence, **copying the diagram as an opaque and a transparent PNG (decoded in
+Chromium and checked pixel by pixel)**, and a run with **every non-localhost request
+aborted**.
 
 New in this pass: a template-geometry test walks **all 15 built-in templates** and
 asserts each is centred on its painted artwork (not the viewBox), fits the pane, has no
@@ -44,7 +49,8 @@ percentage width or `max-width` cap on the root SVG, draws real content, keeps t
 chart's width sane, and renders every Block-diagram box. A diagnostics test asserts the
 reported line matches the edited file through front matter and `%%` comments. An export
 test asserts SVG files carry a background aligned to the viewBox, tight/centred bounds,
-theme text colours, and no script.
+theme text colours, and no script. Clipboard tests decode the copied PNG and assert the
+background alpha, and the desktop run reads the image back from the real clipboard.
 
 ## 1a. Export quality
 
@@ -71,17 +77,41 @@ Current export behaviour:
 - Pie charts now use theme variables for outlines and text instead of Mermaid's
   hardcoded black outline / light-grey labels.
 
-Desktop checks in detail (35): launch + render; native Open dialog; type detection; **even
+Desktop checks in detail (40): launch + render; native Open dialog; type detection; **even
 editor/preview split, diagram centred and fitted**; real typing; Save to disk; save
 toast; relaunch + reopen; clean state after reopen; window close guard appears and can
 be cancelled; **native File > Save menu** reaches the same handler and writes;
 **Save As dialog filled and confirmed, file written, app switches to it**;
 **Export… dialog filled and confirmed, clean SVG written**; SVG and PNG export beside
 the diagram (markup, no scripts, no remote references, valid PNG signature and size);
+**native File > Copy PNG, then the image read back from the Windows clipboard
+(dimensions, opacity, theme background), and still present 2.5 s later**;
 OS file hand-off; **a direct launch with a file argument opens it clean (BOM), renders,
 and centres/fits at the real window size**, inspected over WebView2's debugging
 endpoint. A screenshot of the running desktop app is written to `docs/screenshot.png`
 (captured over that endpoint, so it is exactly what the window shows).
+
+## 1b. Clipboard
+
+`Ctrl+Shift+C` (or File ▸ Copy PNG) rasterises the live preview, sends the PNG to Rust
+and writes it to the OS clipboard. The image never touches disk.
+
+- **Chromium (Playwright):** both variants are decoded back and inspected. The opaque
+  copy is 255-alpha with `rgb(255,255,255)` padding; the transparent copy is 0-alpha
+  there. The payload starts with the PNG signature and matches the reported dimensions.
+  The opaque case is triggered by the real `Ctrl+Shift+C` key event.
+- **Windows desktop:** the native File ▸ Copy PNG item was invoked through
+  `WM_COMMAND`, then `System.Windows.Forms.Clipboard.GetImage()` returned
+  `752x190 a=255 rgb=13,17,23` — a real image at the dark theme's background, read back
+  from the OS clipboard rather than from the app.
+- **Rust:** non-base64, non-PNG, zero-sized and oversized payloads (over 10,000 px,
+  9,000 × 9,000 by pixel count, or over 32 MiB of base64) are rejected before
+  `arboard` is constructed, so the guards run on headless CI. The frontend scales its
+  raster to the same 32 MP budget (`pngPixelSize`), so a large diagram is resized
+  rather than refused.
+- **Clipboard ownership:** the `arboard::Clipboard` is held by the application, not
+  created per call, because X11/Wayland serve clipboard data from the owning process.
+  The desktop check re-reads the clipboard after 2.5 s to prove the content persists.
 
 ## 2. Desktop end-to-end (real Windows build)
 
@@ -255,6 +285,12 @@ Limitations encountered:
   an uninstall cycle.
 - **Signing:** the installer is unsigned; Windows SmartScreen will warn until a
   code-signing certificate is configured.
+- **Clipboard on macOS/Linux:** the Rust command uses `arboard` and is built for all
+  three platforms (the Linux build enables `wayland-data-control`), but only the
+  Windows clipboard was read back. On Linux the image is served by this process, which
+  is why the handle is app-owned and the desktop check re-reads after a delay; a
+  Wayland compositor without the data-control protocol still needs XWayland. Those
+  platforms are otherwise covered by unit tests and CI compilation.
 - **Dialog mechanics:** the native file-name field is DirectUI-hosted and ignores
   `WM_SETTEXT`/UI Automation `ValuePattern`; the harness writes it with
   `EM_REPLACESEL` + `BM_CLICK` and then verifies the resulting file, which is what the

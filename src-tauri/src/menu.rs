@@ -16,6 +16,7 @@ pub fn install<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
     let save_as = MenuItemBuilder::with_id("save-as", "Save As...\tCtrl+Shift+S").build(app)?;
     let export_svg = MenuItemBuilder::with_id("export-svg", "Export SVG...").build(app)?;
     let export_png = MenuItemBuilder::with_id("export-png", "Export PNG...").build(app)?;
+    let copy_png = MenuItemBuilder::with_id("copy-png", "Copy PNG\tCtrl+Shift+C").build(app)?;
     let close_tab = MenuItemBuilder::with_id("close-tab", "Close Diagram\tCtrl+W").build(app)?;
     let quit = PredefinedMenuItem::quit(app, Some("Exit"))?;
 
@@ -28,6 +29,7 @@ pub fn install<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
         .separator()
         .item(&export_svg)
         .item(&export_png)
+        .item(&copy_png)
         .separator()
         .item(&close_tab)
         .separator()

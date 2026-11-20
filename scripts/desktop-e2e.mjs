@@ -17,7 +17,9 @@
  *   7. Save As fills the native dialog and creates the file on disk.
  *   8. Export fills the native dialog and writes real SVG.
  *   9. "Export beside diagram" produces real SVG and PNG files on disk.
- *  10. Launching the executable with a file argument (file association /
+ *  10. "Copy PNG" puts a real image (dimensions, opaque background) on the
+ *      Windows clipboard, read back with System.Windows.Forms.
+ *  11. Launching the executable with a file argument (file association /
  *      OS hand-off) opens that document, verified by the native window title.
  */
 import { spawn, execFileSync } from "node:child_process";
@@ -168,6 +170,37 @@ async function bodyText(driver) {
 
 async function waitForBodyText(driver, needle, timeoutMs = 20_000) {
   await driver.wait(async () => (await bodyText(driver)).includes(needle), timeoutMs);
+}
+
+function runPowerShell(script) {
+  return execFileSync("powershell.exe", ["-NoProfile", "-Sta", "-Command", script]).toString().trim();
+}
+
+/** Read the clipboard image as `WxH a=alpha rgb=r,g,b`, or `empty`. */
+function readClipboardImage() {
+  try {
+    return runPowerShell(
+      [
+        "Add-Type -AssemblyName System.Windows.Forms",
+        "Add-Type -AssemblyName System.Drawing",
+        "$img = [System.Windows.Forms.Clipboard]::GetImage()",
+        "if ($img -eq $null) { 'empty' } else { $p = $img.GetPixel(0,0); \"$($img.Width)x$($img.Height) a=$($p.A) rgb=$($p.R),$($p.G),$($p.B)\" }",
+      ].join("; "),
+    );
+  } catch {
+    return "error";
+  }
+}
+
+async function waitForClipboardImage(timeoutMs = 20_000) {
+  const deadline = Date.now() + timeoutMs;
+  let value = "empty";
+  while (Date.now() < deadline) {
+    value = readClipboardImage();
+    if (/^\d+x\d+/.test(value)) return value;
+    await sleep(300);
+  }
+  return value;
 }
 
 
@@ -482,6 +515,57 @@ async function main() {
       );
       check(png.length > 2000, "PNG export is a non-trivial image");
     }
+
+    /* ---------- 9. Copy PNG to the real Windows clipboard ---------- */
+    // Clear first so an image left by another app cannot make this pass.
+    try {
+      runPowerShell(
+        "Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.Clipboard]::Clear()",
+      );
+    } catch {
+      // A locked clipboard is fine; the wait below still has to see our image.
+    }
+
+    const copyResult = execFileSync("powershell.exe", [
+      "-NoProfile",
+      "-File",
+      path.join(root, "scripts", "desktop", "menu-invoke.ps1"),
+      "-ItemText",
+      "Copy PNG",
+    ]).toString();
+    check(copyResult.includes("invoked"), `native File > Copy PNG invoked (${copyResult.trim()})`);
+
+    const clipboard = await waitForClipboardImage();
+    const clipboardMatch = /^(\d+)x(\d+) a=(\d+) rgb=(\d+),(\d+),(\d+)$/.exec(clipboard);
+    check(Boolean(clipboardMatch), `the clipboard holds the copied image (${clipboard})`);
+    if (clipboardMatch) {
+      const width = Number(clipboardMatch[1]);
+      const height = Number(clipboardMatch[2]);
+      check(
+        width > 100 && height > 50,
+        `clipboard image has diagram dimensions (${width}x${height})`,
+      );
+      check(clipboardMatch[3] === "255", "clipboard image is opaque");
+      const [r, g, b] = [
+        Number(clipboardMatch[4]),
+        Number(clipboardMatch[5]),
+        Number(clipboardMatch[6]),
+      ];
+      const light = r === 255 && g === 255 && b === 255;
+      const dark = r === 13 && g === 17 && b === 23;
+      check(light || dark, `clipboard background follows the app theme (rgb ${r},${g},${b})`);
+    }
+
+    // The image must still be there a moment later. On X11/Wayland the clipboard
+    // is served by the owning process, so a handle created and dropped per call
+    // loses the image; Windows is more forgiving, but the re-read proves the
+    // handle outlives the command everywhere the check runs.
+    await sleep(2500);
+    const reRead = readClipboardImage();
+    check(
+      reRead === clipboard,
+      `the copied image survives after the command returns (${reRead})`,
+    );
 
     await quitQuietly(driver);
     driver = null;

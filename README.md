@@ -21,8 +21,10 @@ feature.
   `.md`/`.txt`) with native dialogs and atomic writes.
 - **Multiple tabs** — independent undo history, dirty indicators, middle-click close,
   drag-to-reorder, and a Save / Discard / Cancel guard for unsaved work.
-- **Export** — standalone SVG and 2× PNG, rendered locally (no mermaid.ink), either
-  through a native dialog or as a one-click export beside the open diagram. SVG export
+- **Export & copy** — standalone SVG and 2× PNG, rendered locally (no mermaid.ink),
+  either through a native dialog or as a one-click export beside the open diagram. The
+  diagram can also go straight to the clipboard as a PNG (opaque or transparent), so it
+  pastes into chat, docs and issue trackers without a file in between. SVG export
   includes a theme background by default; a transparent variant is also available and
   keeps the current theme's text colour (use it on a matching background).
 - **Zoom & pan** — mouse-wheel zoom at the cursor, drag to pan, fit to window, and
@@ -116,7 +118,7 @@ Two GitHub Actions workflows live in `.github/workflows/`:
 | `ci.yml` | push to `main`, pull request, manual | frontend type-check + Vitest + production build; Playwright browser E2E on that bundle; Rust `fmt`/`clippy -D warnings`/tests on **Windows, macOS and Ubuntu** |
 | `build.yml` | manual, or pushing a `v*` tag | `tauri-action` bundles on all three platforms. Manual runs upload workflow artifacts; a tag also creates a **draft GitHub release** with the installers attached and notes taken from `CHANGELOG.md` |
 
-The 35-check desktop suite stays local (`npm run test:desktop`): it drives the real
+The 40-check desktop suite stays local (`npm run test:desktop`): it drives the real
 Tauri window with `tauri-driver`, native dialogs and WebView2, which the hosted runners
 do not provide. Everything else is covered in CI.
 
@@ -147,6 +149,7 @@ Release history lives in [CHANGELOG.md](CHANGELOG.md).
 | Toggle theme | `Ctrl+Shift+T` |
 | Toggle preview | `Ctrl+Shift+D` |
 | Export PNG / SVG | `Ctrl+Shift+P` / `Ctrl+Shift+E` |
+| Copy diagram as PNG | `Ctrl+Shift+C` |
 | Find in editor | `Ctrl+F` |
 | Keyboard shortcuts | `F1` |
 

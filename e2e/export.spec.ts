@@ -15,6 +15,30 @@ async function exportSvg(page: import("@playwright/test").Page) {
   return page.evaluate(() => window.__MERMAIDDESK_TEST__?.getLastExport() ?? null);
 }
 
+/** Decode the copied PNG inside Chromium and read its top-left pixel. */
+async function cornerPixel(page: import("@playwright/test").Page, base64: string) {
+  return page.evaluate(async (data) => {
+    const binary = atob(data);
+    const bytes = new Uint8Array(binary.length);
+    for (let index = 0; index < binary.length; index += 1) {
+      bytes[index] = binary.charCodeAt(index);
+    }
+    const bitmap = await createImageBitmap(new Blob([bytes], { type: "image/png" }));
+    const canvas = document.createElement("canvas");
+    canvas.width = bitmap.width;
+    canvas.height = bitmap.height;
+    const context = canvas.getContext("2d")!;
+    context.drawImage(bitmap, 0, 0);
+    const pixel = context.getImageData(0, 0, 1, 1).data;
+    return {
+      width: bitmap.width,
+      height: bitmap.height,
+      alpha: pixel[3],
+      rgb: [pixel[0], pixel[1], pixel[2]],
+    };
+  }, base64);
+}
+
 test("SVG export carries a readable background and tight bounds", async ({ page }) => {
   await page.goto("/");
   await page.locator('[data-testid="preview-canvas"] svg').waitFor({ timeout: 30_000 });
@@ -135,4 +159,45 @@ test("transparent SVG export omits the background but keeps tight bounds", async
   const viewBox = /viewBox="([^"]+)"/.exec(payload!.data)![1].split(/\s+/).map(Number);
   expect(viewBox[2]).toBeGreaterThan(0);
   expect(viewBox[2]).toBeLessThan(700);
+});
+
+test("copies the diagram as an opaque PNG with the keyboard shortcut", async ({ page }) => {
+  await page.goto("/");
+  await page.locator('[data-testid="preview-canvas"] svg').waitFor({ timeout: 30_000 });
+  await page.waitForTimeout(400);
+
+  await page.keyboard.press("Control+Shift+C");
+  await expect(page.locator('[data-testid="status-message"]')).toContainText("Copied PNG", {
+    timeout: 20_000,
+  });
+
+  const copy = await page.evaluate(() => window.__MERMAIDDESK_TEST__?.getLastCopy() ?? null);
+  expect(copy, "the clipboard command received a payload").not.toBeNull();
+  expect(copy!.data.startsWith("iVBORw0KGgo"), "payload is a PNG").toBe(true);
+  expect(copy!.width).toBeGreaterThan(50);
+  expect(copy!.height).toBeGreaterThan(50);
+
+  const corner = await cornerPixel(page, copy!.data);
+  expect(corner.width).toBe(copy!.width);
+  expect(corner.height).toBe(copy!.height);
+  // Opaque: the canvas is filled with the resolved theme background.
+  expect(corner.alpha).toBe(255);
+  expect(corner.rgb).toEqual([255, 255, 255]);
+});
+
+test("copies a transparent PNG when that variant is chosen", async ({ page }) => {
+  await page.goto("/");
+  await page.locator('[data-testid="preview-canvas"] svg').waitFor({ timeout: 30_000 });
+  await page.waitForTimeout(400);
+
+  await page.locator('[data-testid="export-menu"]').click();
+  await page.getByRole("menuitem", { name: /Copy PNG \(transparent\)/ }).click();
+  await expect(page.locator('[data-testid="status-message"]')).toContainText("Copied PNG");
+
+  const copy = await page.evaluate(() => window.__MERMAIDDESK_TEST__?.getLastCopy() ?? null);
+  expect(copy).not.toBeNull();
+
+  const corner = await cornerPixel(page, copy!.data);
+  // No background rect: the padding around the diagram stays transparent.
+  expect(corner.alpha).toBe(0);
 });

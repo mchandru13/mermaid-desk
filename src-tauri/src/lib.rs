@@ -1,3 +1,4 @@
+mod clipboard;
 mod documents;
 mod error;
 mod menu;
@@ -61,6 +62,7 @@ pub fn run() {
         .plugin(tauri_plugin_window_state::Builder::default().build())
         .manage(documents::DocumentAccess::default())
         .manage(settings::SettingsState::default())
+        .manage(clipboard::ClipboardState::default())
         .setup(|app| {
             let args: Vec<String> = std::env::args().collect();
             let access = app.state::<documents::DocumentAccess>();
@@ -78,6 +80,7 @@ pub fn run() {
             documents::save_document_as,
             documents::export_document,
             documents::export_beside_document,
+            clipboard::copy_image_to_clipboard,
             documents::take_pending_documents,
             documents::open_dropped_documents,
             documents::reveal_document,

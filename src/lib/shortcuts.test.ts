@@ -42,6 +42,13 @@ describe("keyboard shortcuts", () => {
     expect(matchShortcut(key("F1"))).toBe("toggle-shortcuts");
   });
 
+  it("claims Ctrl+Shift+C for copying the diagram, never plain Ctrl+C", () => {
+    expect(matchShortcut(key("c", { ctrlKey: true, shiftKey: true }))).toBe("copy-png");
+    expect(matchShortcut(key("C", { ctrlKey: true, shiftKey: true }))).toBe("copy-png");
+    expect(matchShortcut(key("c", { ctrlKey: true }))).toBeNull();
+    expect(matchShortcut(key("c", { metaKey: true }))).toBeNull();
+  });
+
   it("every declared shortcut resolves to its own action", () => {
     for (const shortcut of SHORTCUTS) {
       const isMac = shortcut.keys.includes("Ctrl") && false;

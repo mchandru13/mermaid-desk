@@ -3,6 +3,21 @@ import { describe, expect, it, vi } from "vitest";
 import { useWorkspace } from "./workspace";
 import { mockSeedFile } from "../lib/platform";
 
+// Rasterising needs a real canvas, which happy-dom does not provide; the real
+// path is covered by the Playwright scenario. Here the PNG payload is stubbed so
+// the platform/target handling can be tested. The fixture is inlined because
+// vi.mock factories are hoisted above imports.
+vi.mock("../lib/export", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../lib/export")>();
+  return {
+    ...actual,
+    svgToPngBase64: vi.fn(
+      async () =>
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+    ),
+  };
+});
+
 function setup() {
   const notify = vi.fn();
   const confirm = vi.fn(async () => true);
@@ -112,5 +127,37 @@ describe("workspace state", () => {
     expect(result.current.activeId).not.toBe(twoId);
     act(() => result.current.cycleDocument(-1));
     expect(result.current.activeId).toBe(twoId);
+  });
+
+  it("copies the diagram through the clipboard command", async () => {
+    const { result, notify } = setup();
+    await waitFor(() => expect(result.current.ready).toBe(true));
+
+    await act(async () => {
+      await result.current.copyDiagram('<svg xmlns="http://www.w3.org/2000/svg"/>');
+    });
+
+    expect(window.__MERMAIDDESK_TEST__?.getLastCopy()).toMatchObject({
+      width: 1,
+      height: 1,
+    });
+    expect(notify).toHaveBeenCalledWith(
+      expect.objectContaining({
+        text: expect.stringContaining("Copied PNG (1 × 1)"),
+        tone: "success",
+      }),
+    );
+  });
+
+  it("does not copy when there is nothing rendered", async () => {
+    const { result, notify } = setup();
+    await waitFor(() => expect(result.current.ready).toBe(true));
+    notify.mockClear();
+
+    await act(async () => {
+      await result.current.copyDiagram("   ");
+    });
+
+    expect(notify).toHaveBeenCalledWith(expect.objectContaining({ tone: "error" }));
   });
 });

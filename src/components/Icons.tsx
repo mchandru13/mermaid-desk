@@ -60,6 +60,13 @@ export const ImageIcon = (props: IconProps) => (
   </Icon>
 );
 
+export const ClipboardIcon = (props: IconProps) => (
+  <Icon {...props}>
+    <rect x="8" y="3" width="8" height="4" rx="1" />
+    <path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2" />
+  </Icon>
+);
+
 export const LayoutIcon = (props: IconProps) => (
   <Icon {...props}>
     <rect x="3" y="4" width="18" height="16" rx="2" />

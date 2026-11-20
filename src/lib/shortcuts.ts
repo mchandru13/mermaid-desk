@@ -15,6 +15,7 @@ export type ShortcutAction =
   | "previous-tab"
   | "export-svg"
   | "export-png"
+  | "copy-png"
   | "zoom-in"
   | "zoom-out"
   | "zoom-reset"
@@ -40,6 +41,7 @@ export const SHORTCUTS: ShortcutDefinition[] = [
   { action: "previous-tab", keys: ["Ctrl", "Shift", "Tab"], label: "Previous diagram" },
   { action: "export-svg", keys: ["Ctrl", "Shift", "E"], label: "Export SVG" },
   { action: "export-png", keys: ["Ctrl", "Shift", "P"], label: "Export PNG" },
+  { action: "copy-png", keys: ["Ctrl", "Shift", "C"], label: "Copy diagram as PNG" },
   { action: "zoom-in", keys: ["Ctrl", "+"], label: "Zoom in" },
   { action: "zoom-out", keys: ["Ctrl", "-"], label: "Zoom out" },
   { action: "zoom-reset", keys: ["Ctrl", "0"], label: "Actual size" },
@@ -104,6 +106,10 @@ export function matchShortcut(event: KeyLike): ShortcutAction | null {
       return shift ? "export-svg" : null;
     case "p":
       return shift ? "export-png" : null;
+    case "c":
+      // Plain Ctrl+C must keep copying editor text, so only the shift variant
+      // is claimed here.
+      return shift ? "copy-png" : null;
     case "=":
     case "+":
       return "zoom-in";

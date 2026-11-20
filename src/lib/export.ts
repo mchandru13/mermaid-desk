@@ -10,7 +10,15 @@ export interface ExportOptions {
   scale?: number;
   background?: string;
   maxDimension?: number;
+  /** Refuse to allocate more than this many pixels (width × height). */
+  maxPixels?: number;
 }
+
+/** Matches `MAX_IMAGE_PIXELS` in `src-tauri/src/clipboard.rs`. */
+export const CLIPBOARD_MAX_PIXELS = 32_000_000;
+
+/** Head-room for rounding when a raster is scaled down to a pixel budget. */
+const PIXEL_MARGIN = 0.999;
 
 const DEFAULT_SCALE = 2;
 const DEFAULT_MAX_DIMENSION = 8192;
@@ -84,18 +92,7 @@ export async function svgToPngBase64(
 ): Promise<string> {
   const background = options.background ?? "#ffffff";
   const prepared = withBackground(svg, background);
-  const size = svgSize(prepared);
-
-  const requestedScale = options.scale ?? DEFAULT_SCALE;
-  const maxDimension = options.maxDimension ?? DEFAULT_MAX_DIMENSION;
-  const scale = Math.min(
-    requestedScale,
-    maxDimension / Math.max(size.width, 1),
-    maxDimension / Math.max(size.height, 1),
-  );
-
-  const width = Math.max(1, Math.round(size.width * scale));
-  const height = Math.max(1, Math.round(size.height * scale));
+  const { width, height } = pngPixelSize(svgSize(prepared), options);
 
   const image = await loadSvgImage(prepared);
   const canvas = document.createElement("canvas");
@@ -106,8 +103,12 @@ export async function svgToPngBase64(
   if (!context) {
     throw new Error("This system cannot create a 2D canvas for PNG export.");
   }
-  context.fillStyle = background;
-  context.fillRect(0, 0, width, height);
+  // An empty background means transparent: filling with "" would silently keep
+  // the previous (black) fill style instead.
+  if (background) {
+    context.fillStyle = background;
+    context.fillRect(0, 0, width, height);
+  }
   context.drawImage(image, 0, 0, width, height);
 
   const dataUrl = canvas.toDataURL("image/png");
@@ -116,6 +117,45 @@ export async function svgToPngBase64(
     throw new Error("PNG encoding failed.");
   }
   return base64;
+}
+
+/**
+ * Pixel size of the raster, honouring the scale, per-side and total-pixel caps.
+ *
+ * Shared with the clipboard path so the frontend can never produce an image that
+ * Rust will reject: `maxPixels` mirrors `MAX_IMAGE_PIXELS` in `clipboard.rs`.
+ * Rounding can overshoot by a few hundred pixels, so the budget keeps a margin.
+ */
+export function pngPixelSize(
+  size: { width: number; height: number },
+  options: ExportOptions = {},
+): { width: number; height: number } {
+  const requestedScale = options.scale ?? DEFAULT_SCALE;
+  const maxDimension = options.maxDimension ?? DEFAULT_MAX_DIMENSION;
+  const maxPixels = options.maxPixels ?? Number.POSITIVE_INFINITY;
+
+  const longest = Math.max(size.width, size.height, 1);
+  const area = Math.max(size.width * size.height, 1);
+
+  let scale = Math.min(requestedScale, maxDimension / longest);
+  if (Number.isFinite(maxPixels)) {
+    scale = Math.min(scale, Math.sqrt(maxPixels / area) * PIXEL_MARGIN);
+  }
+
+  const width = Math.max(1, Math.round(size.width * scale));
+  const height = Math.max(1, Math.round(size.height * scale));
+
+  // Rounding up on both sides can still exceed the budget; shrink the longer
+  // side until the product fits.
+  if (Number.isFinite(maxPixels) && width * height > maxPixels) {
+    const shrink = Math.sqrt(maxPixels / (width * height)) * PIXEL_MARGIN;
+    return {
+      width: Math.max(1, Math.floor(width * shrink)),
+      height: Math.max(1, Math.floor(height * shrink)),
+    };
+  }
+
+  return { width, height };
 }
 
 function loadSvgImage(svg: string): Promise<HTMLImageElement> {
@@ -147,6 +187,27 @@ export function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+/**
+ * Read the pixel size out of a base64 PNG, for the browser test backend. The
+ * packaged app gets the size back from Rust after decoding the image.
+ */
+export function pngSize(base64: string): { width: number; height: number } | null {
+  try {
+    const header = atob(base64.slice(0, 64));
+    if (header.slice(0, 8) !== "\x89PNG\r\n\x1a\n") return null;
+    const bytes = new Uint8Array(header.length);
+    for (let index = 0; index < header.length; index += 1) {
+      bytes[index] = header.charCodeAt(index);
+    }
+    const view = new DataView(bytes.buffer);
+    const width = view.getUint32(16);
+    const height = view.getUint32(20);
+    return width > 0 && height > 0 ? { width, height } : null;
+  } catch {
+    return null;
+  }
 }
 
 /** Build a stable export file name, e.g. `architecture.png`. */
