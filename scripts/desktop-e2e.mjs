@@ -471,6 +471,50 @@ async function main() {
     );
     check((await bodyText(driver)).includes("saved-as.mmd"), "the app switched to the new file");
 
+    /* ---------- 6b. Recent files survive a restart ---------- */
+    // Closing and reopening exercises the persisted recent list, which is a
+    // separate authorisation path in Rust from the Open dialog. Settings are
+    // written on a short debounce, so let that land before quitting.
+    await sleep(1200);
+    await driver.quit();
+    driver = null;
+    await sleep(1500);
+    driver = await createSession();
+    await driver.manage().setTimeouts({ implicit: 0, pageLoad: 60_000 });
+    await driver.wait(until.elementLocated(By.css(".monaco-editor")), 30_000);
+
+    await driver.findElement(By.css('[data-testid="recent-menu"]')).click();
+    await driver.wait(until.elementLocated(By.css('[role="menu"] [role="menuitem"]')), 5_000);
+    const recentItems = await driver.findElements(
+      By.xpath("//*[@role='menuitem' and contains(., 'saved-as.mmd')]"),
+    );
+    let recentItem = null;
+    for (const item of recentItems) {
+      // getText() drops the hint line in this WebView; innerText keeps it.
+      const text = await driver.executeScript(
+        "return arguments[0].innerText || arguments[0].textContent || '';",
+        item,
+      );
+      if (String(text).includes(path.basename(workDir))) {
+        recentItem = item;
+        break;
+      }
+    }
+    check(Boolean(recentItem), "the Recent menu lists this session's saved document");
+    if (recentItem) {
+      await recentItem.click();
+    }
+    // The preview marker is proof the document opened; menu text cannot satisfy it.
+    await waitForPreview(driver, "NATIVEMENUMARKER", 20_000);
+    check(
+      (await previewText(driver)).includes("NATIVEMENUMARKER"),
+      "reopening a recent after a restart shows its saved content",
+    );
+    check(
+      (await bodyText(driver)).includes("saved-as.mmd"),
+      "the reopened recent is the active tab",
+    );
+
     /* ---------- 7. Export… through the native dialog ---------- */
     const exportedSvg = path.join(workDir, "dialog-export.svg");
     await clickMenuItem(driver, "Export SVG…");

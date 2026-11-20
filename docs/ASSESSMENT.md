@@ -102,7 +102,7 @@ It is a good product to study, not a lean base for this deliverable.
 | Drag & drop | No | No | No | Implemented, extension-filtered |
 | Single-instance hand-off | N/A | No | No | Yes (verified with installed app) |
 | Diagnostics | Error text | Error text via innerHTML | Error panel | Line-numbered diagnostics + go-to-line |
-| Tests | Playwright (web) | None found | Vitest unit tests | 40 Rust + 56 Vitest + 24 Playwright + 40 desktop checks |
+| Tests | Playwright (web) | None found | Vitest unit tests | 49 Rust + 56 Vitest + 24 Playwright + 43 desktop checks |
 | Installer artefact | No | NSIS + MSI | None published | NSIS + MSI, installed and verified |
 | Offline rendering | No (hosted links) | Yes | Yes | Yes (all assets bundled, CSP blocks network) |
 | Security posture | Hosted renderer links | `csp: null`, loose Mermaid, unsanitised innerHTML, broad FS scope | Strict CSP; webview supplies arbitrary paths | Strict CSP, Rust-owned dialogs, path authorisation, sanitised SVG |

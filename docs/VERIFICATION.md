@@ -14,7 +14,7 @@ This report records what was actually executed. Anything not executed is listed 
 | Rust unit/integration | `cargo test` (in `src-tauri`) | **49 passed, 0 failed** |
 | Frontend unit/integration | `npm run test` (Vitest) | **56 passed, 0 failed** across 6 files |
 | Production UI E2E | `npm run build && npm run test:e2e` (Playwright, Chromium 159) | **24 passed, 0 failed** |
-| Desktop E2E | `npm run test:desktop` (tauri-driver + WebView2 + real Rust binary) | **40 checks passed** |
+| Desktop E2E | `npm run test:desktop` (tauri-driver + WebView2 + real Rust binary) | **43 checks passed** |
 | Type check | `npx tsc --noEmit` | clean |
 
 Rust coverage: path canonicalisation, verbatim-path display, extension allowlists,
@@ -81,7 +81,7 @@ Current export behaviour:
 - Pie charts now use theme variables for outlines and text instead of Mermaid's
   hardcoded black outline / light-grey labels.
 
-Desktop checks in detail (40): launch + render; native Open dialog; type detection; **even
+Desktop checks in detail (43): launch + render; native Open dialog; type detection; **even
 editor/preview split, diagram centred and fitted**; real typing; Save to disk; save
 toast; relaunch + reopen; clean state after reopen; window close guard appears and can
 be cancelled; **native File > Save menu** reaches the same handler and writes;
@@ -90,6 +90,8 @@ be cancelled; **native File > Save menu** reaches the same handler and writes;
 the diagram (markup, no scripts, no remote references, valid PNG signature and size);
 **native File > Copy PNG, then the image read back from the Windows clipboard
 (dimensions, opacity, theme background), and still present 2.5 s later**;
+**quit, relaunch, and reopen this run's saved file from the Recent menu (saved
+content, active tab)**;
 OS file hand-off; **a direct launch with a file argument opens it clean (BOM), renders,
 and centres/fits at the real window size**, inspected over WebView2's debugging
 endpoint. A screenshot of the running desktop app is written to `docs/screenshot.png`
@@ -322,6 +324,28 @@ numeric prereleases or plain `x.y.z` versions can ship an `.msi`.
 
 The desktop E2E suite remains a local script because it needs a real Tauri window,
 native dialogs and WebView2.
+
+### Release 1.1.1
+
+The first release that used the checksums job, and the first whose installer was
+verified by the full desktop suite:
+
+- Tag run [44757619252](https://github.com/mchandru13/mermaid-desk/actions/runs/44757619252):
+  all three bundles and the **Checksums** job succeeded; the draft carried seven
+  assets (six installers plus `SHA256SUMS.txt`).
+- The generated block matched the attached files: `sha256sum -c SHA256SUMS.txt`
+  returned **OK for all six**.
+- The changelog prefix of the release body matched
+  `node scripts/release-notes.mjs v1.1.1` **exactly** (1,985 characters); the
+  checksums block follows it.
+- The downloaded Windows installer was installed (`FileVersion 1.1.1`) and the whole
+  desktop suite was run **against the installed binary**
+  (`MERMAIDDESK_APP=…`): **43/43 checks**, including reopening this run's saved file
+  from the Recent menu after a restart — the native read path added in this release.
+
+| Released asset | Size | SHA-256 |
+| --- | --- | --- |
+| `MermaidDesk_1.1.1_x64-setup.exe` | 6,646,901 B | `8946A6FBF42B331AABBE970880FCE065256EB7409B240F9181CF4657191AEC52` |
 
 ## 6. REA evidence for the shipped build
 

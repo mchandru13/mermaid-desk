@@ -118,7 +118,7 @@ Two GitHub Actions workflows live in `.github/workflows/`:
 | `ci.yml` | push to `main`, pull request, manual | frontend type-check + Vitest + production build; Playwright browser E2E on that bundle; Rust `fmt`/`clippy -D warnings`/tests on **Windows, macOS and Ubuntu** |
 | `build.yml` | manual, or pushing a `v*` tag | `tauri-action` bundles on all three platforms. Manual runs upload workflow artifacts; a tag also creates a **draft GitHub release** with the installers attached and notes taken from `CHANGELOG.md` |
 
-The 40-check desktop suite stays local (`npm run test:desktop`): it drives the real
+The 43-check desktop suite stays local (`npm run test:desktop`): it drives the real
 Tauri window with `tauri-driver`, native dialogs and WebView2, which the hosted runners
 do not provide. Everything else is covered in CI.
 

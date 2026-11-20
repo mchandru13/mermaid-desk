@@ -47,9 +47,9 @@ A security patch. Upgrading is recommended for anyone running 1.1.0.
 
 ### Verification
 
-49 Rust tests, 56 Vitest tests, 24 Playwright scenarios and 40 checks against the
+49 Rust tests, 56 Vitest tests, 24 Playwright scenarios and 43 checks against the
 installed Windows build, including reading the copied image back from the real
-clipboard and confirming it survives after the command returns.
+clipboard and reopening a recent document after a restart.
 
 ## [1.1.0] - 2026-11-20
 
