@@ -107,6 +107,28 @@ npm run test:desktop
 The script is `scripts/desktop-e2e.mjs`; its checks and recorded results are listed in
 `docs/VERIFICATION.md`.
 
+## Continuous integration
+
+Two GitHub Actions workflows live in `.github/workflows/`:
+
+| Workflow | Trigger | What it does |
+| --- | --- | --- |
+| `ci.yml` | push to `main`, pull request, manual | frontend type-check + Vitest + production build; Playwright browser E2E on that bundle; Rust `fmt`/`clippy -D warnings`/tests on **Windows, macOS and Ubuntu** |
+| `build.yml` | manual, or pushing a `v*` tag | `tauri-action` bundles on all three platforms. Manual runs upload workflow artifacts; a tag also creates a **draft GitHub release** with the installers attached |
+
+The 35-check desktop suite stays local (`npm run test:desktop`): it drives the real
+Tauri window with `tauri-driver`, native dialogs and WebView2, which the hosted runners
+do not provide. Everything else is covered in CI.
+
+To cut a release:
+
+```bash
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+Then review and publish the draft release that `build.yml` creates.
+
 ## Keyboard shortcuts
 
 | Action | Shortcut |

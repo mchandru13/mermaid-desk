@@ -150,7 +150,30 @@ ProgID. (Checked with `Get-ItemProperty HKCU:\Software\Classes\.mmd`.)
 - No hosted renderer is used: there is no mermaid.ink/Kroki code path, and exports are
   written by Rust after a local canvas conversion.
 
-## 5. REA evidence for the shipped build
+## 5. Continuous integration
+
+Both workflows were executed on GitHub, not just written:
+
+| Workflow | Run | Result |
+| --- | --- | --- |
+| `ci.yml` | [44701504067](https://github.com/mchandru13/mermaid-desk/actions/runs/44701504067) | **all 5 jobs green** — frontend, browser E2E, Rust on Windows, macOS and Ubuntu |
+| `build.yml` (manual) | [44703728464](https://github.com/mchandru13/mermaid-desk/actions/runs/44703728464) | **all 3 bundle jobs green**; artifacts `mermaid-desk-windows`, `mermaid-desk-macos`, `mermaid-desk-linux` |
+
+The Windows artifact was downloaded and inspected: `MermaidDesk_1.0.0_x64-setup.exe`
+(6.21 MB) and `MermaidDesk_1.0.0_x64_en-US.msi` (7.24 MB).
+
+CI exposed two real portability problems, both fixed:
+
+- Three settings tests assumed `C:\...` is an absolute path; it is not on macOS/Linux,
+  so the recent-file filter (correctly) dropped them. Tests now use the host temp
+  directory.
+- `upload-artifact@v7` renamed the `if-no-files-found` value `warning` to `warn`.
+
+Not exercised: the tag-triggered release path of `build.yml` (manual dispatch was used,
+which skips release creation). The desktop E2E suite remains a local script because it
+needs a real Tauri window, native dialogs and WebView2.
+
+## 6. REA evidence for the shipped build
 
 | Item | Evidence |
 | --- | --- |
@@ -176,7 +199,7 @@ Limitations encountered:
   compressed, so a plain string scan was treated as bounded negative evidence only;
   offline behaviour is instead established by the aborted-request test above.
 
-## 6. Known limitations of this verification
+## 7. Known limitations of this verification
 
 - **Drag-and-drop gesture:** the OS-level drag from Explorer into the window is not
   automated (it needs real OLE drag input, which this session blocks). The pieces it
