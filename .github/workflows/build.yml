@@ -85,4 +85,4 @@ jobs:
             src-tauri/target/release/bundle/deb/*.deb
             src-tauri/target/release/bundle/appimage/*.AppImage
           retention-days: 14
-          if-no-files-found: warning
+          if-no-files-found: warn
