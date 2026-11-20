@@ -11,7 +11,7 @@ This report records what was actually executed. Anything not executed is listed 
 
 | Suite | Command | Result |
 | --- | --- | --- |
-| Rust unit/integration | `cargo test` (in `src-tauri`) | **40 passed, 0 failed** |
+| Rust unit/integration | `cargo test` (in `src-tauri`) | **42 passed, 0 failed** |
 | Frontend unit/integration | `npm run test` (Vitest) | **56 passed, 0 failed** across 6 files |
 | Production UI E2E | `npm run build && npm run test:e2e` (Playwright, Chromium 159) | **24 passed, 0 failed** |
 | Desktop E2E | `npm run test:desktop` (tauri-driver + WebView2 + real Rust binary) | **40 checks passed** |
@@ -25,6 +25,8 @@ authorisation refusal, recreating a deleted authorised file,
 **export encode/write (SVG, base64 PNG, bad payload, unknown format)**,
 **clipboard PNG decoding (signature, base64, zero/oversized dimensions, RGBA output,
 and rejection before the clipboard is touched)**,
+**reveal authorisation (refuses paths that were not opened, relative paths and missing
+files)**,
 **beside-export authorisation/overwrite**, **drag-and-drop filtering and 32-file cap**,
 settings round-trip and split clamping, corrupt-file fallback, backup creation,
 recent-file cap.
@@ -112,6 +114,49 @@ and writes it to the OS clipboard. The image never touches disk.
 - **Clipboard ownership:** the `arboard::Clipboard` is held by the application, not
   created per call, because X11/Wayland serve clipboard data from the owning process.
   The desktop check re-reads the clipboard after 2.5 s to prove the content persists.
+
+## 1c. Security hardening
+
+Checked on 2026-11-20 against the lockfiles after the security overrides:
+
+| Check | Before | After |
+| --- | --- | --- |
+| `npm audit --omit=dev` | 2 moderate (`dompurify@3.2.7` bundled by Monaco, plus Monaco itself) | **0 vulnerabilities** |
+| OSV against `Cargo.lock` | 7 matches | 7 matches, all unmaintained/transitive |
+
+The production fix is an npm override pinning `dompurify` to 3.4.18 for every
+consumer, so Monaco's private copy is deduped to the patched version (`npm ls
+dompurify` shows one entry). The app never feeds Monaco's markdown renderer untrusted
+content, so the old copy was not reachable — but it was in the shipped bundle.
+
+Dev-only advisories remain and are accepted: `vitest` / `tinypool` / `@vitest/mocker`
+(critical, test-time RCE and path traversal) and `happy-dom` (high). None is shipped;
+clearing them is a `vitest` major upgrade.
+
+Rust findings are transitive and none is a known exploitable issue:
+
+- `chrono`, `zvariant`, `zbus_names`, `proc-macro-error`: unmaintained (RUSTSEC).
+  `chrono` and `zbus` are not in the Windows build.
+- `glib 0.18.5`: unsoundness fixed in 0.20, pinned by the GTK stack and not upgradable
+  independently of Tauri.
+
+Other changes, covered by the suites above:
+
+- `reveal_document` requires authorisation (two new Rust tests).
+- CSP `frame-src 'none'`; the desktop run proves Monaco and Mermaid still render.
+- CI fails on a moderate-or-higher production advisory.
+- Release checksums: a `checksums` job hashes the attached assets, uploads
+  `SHA256SUMS.txt` and appends a marked block to the draft body. It was exercised
+  against the published 1.1.0 assets (the `.exe` hash matches the table below), and
+  the 1.1.0 notes now carry the block.
+
+### Known gap
+
+`read_document` accepts any absolute `.mmd`/`.mermaid`/`.md`/`.txt` path because recent
+files must open after a restart. Exploiting it requires script execution in the webview
+first, and exfiltration has no channel (CSP, no clipboard read, no unauthenticated
+write), but it is weaker than the documented model. Closing it needs native-owned
+recents so `read_document` can require authorisation.
 
 ## 2. Desktop end-to-end (real Windows build)
 
@@ -219,7 +264,8 @@ Tagging `v1.0.0` exercised the release branch end to end:
   the version guard and changelog extraction passed on all three jobs, all three
   bundles built, and the draft gained six assets.
 - The draft body matched `node scripts/release-notes.mjs v1.1.0` **byte for byte**
-  (1,179 characters) before the release was published.
+  (1,179 characters) before the release was published. The checksums job now appends a
+  marked block afterwards; the changelog text itself is unchanged.
 - `ci.yml` on the same commit ([44739896255](https://github.com/mchandru13/mermaid-desk/actions/runs/44739896255))
   was green on all five jobs.
 

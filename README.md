@@ -132,9 +132,11 @@ git push origin v1.0.1
 ```
 
 The draft release's body is extracted from `CHANGELOG.md`, and the workflow refuses
-to build if the tag and the app version disagree. The full procedure — including
-previews, rollback and publishing — is in [docs/RELEASING.md](docs/RELEASING.md).
-Release history lives in [CHANGELOG.md](CHANGELOG.md).
+to build if the tag and the app version disagree. A final job then attaches
+`SHA256SUMS.txt` and appends the same hashes to the notes, so a download can be
+verified. The full procedure — including previews, checksums, rollback and publishing —
+is in [docs/RELEASING.md](docs/RELEASING.md). Release history lives in
+[CHANGELOG.md](CHANGELOG.md).
 
 ## Keyboard shortcuts
 

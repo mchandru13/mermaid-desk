@@ -9,8 +9,28 @@ it for people deciding whether to upgrade (see `docs/RELEASING.md`).
 
 ## [Unreleased]
 
-Nothing yet. Add entries here as changes land; move them into a dated version
-section when you cut a release.
+### Security
+
+- Pin the `dompurify` copy that `monaco-editor` bundles to the current 3.4.18 via an
+  npm override. The bundled 3.2.7 matched 22 advisories; this app never feeds Monaco
+  untrusted markdown, so it was not exploitable here, but it shipped.
+- `reveal_document` now refuses any path that was not opened or saved in this session,
+  matching the read/write authorisation model instead of opening Explorer for
+  arbitrary paths.
+- Tighten the Content Security Policy to `frame-src 'none'`; nothing in the app uses
+  frames.
+- CI fails when a production dependency has a moderate-or-higher advisory, and every
+  release now publishes SHA-256 checksums in the notes and as `SHA256SUMS.txt`.
+
+### Verification
+
+42 Rust tests, 56 Vitest tests, 24 Playwright scenarios and 40 checks against the
+installed Windows build, including reading the copied image back from the real
+clipboard and confirming it survives after the command returns.
+
+Known gap: `read_document` still accepts any absolute `.mmd`/`.mermaid`/`.md`/`.txt`
+path so recent files survive a restart. Fixing it needs native-side recent-file trust
+(see `docs/VERIFICATION.md`).
 
 ## [1.1.0] - 2026-11-20
 

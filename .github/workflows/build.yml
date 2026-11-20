@@ -102,3 +102,64 @@ jobs:
             src-tauri/target/release/bundle/appimage/*.AppImage
           retention-days: 14
           if-no-files-found: warn
+
+  # Runs once per tag, after every bundle has been attached. The hashes are
+  # taken from the published assets themselves, so they describe exactly the
+  # bytes users download. The block is idempotent: a re-run replaces it.
+  checksums:
+    name: Checksums
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Hash the attached assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p release-assets
+          gh release download "$GITHUB_REF_NAME" --dir release-assets
+          rm -f release-assets/SHA256SUMS.txt
+          cd release-assets
+          sha256sum * | sort -k2 > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: Attach the checksum file
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload "$GITHUB_REF_NAME" release-assets/SHA256SUMS.txt --clobber
+
+      - name: Append checksums to the draft notes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python3 - <<'PY'
+          import os
+          import subprocess
+
+          tag = os.environ["GITHUB_REF_NAME"]
+          start, end = "<!-- checksums:start -->", "<!-- checksums:end -->"
+
+          body = subprocess.run(
+              ["gh", "release", "view", tag, "--json", "body", "--jq", ".body"],
+              capture_output=True,
+              text=True,
+              check=True,
+          ).stdout.strip()
+
+          # A re-run must not append the block twice.
+          if start in body:
+              body = body.split(start)[0].rstrip()
+
+          sums = open("release-assets/SHA256SUMS.txt", encoding="utf-8").read().strip()
+          block = f"{start}\n\n### Checksums\n\n```\n{sums}\n```\n\n{end}"
+          with open("release-notes.md", "w", encoding="utf-8") as handle:
+              handle.write(f"{body}\n\n{block}\n")
+
+          subprocess.run(
+              ["gh", "release", "edit", tag, "--notes-file", "release-notes.md"],
+              check=True,
+          )
+          print("checksums appended")
+          PY

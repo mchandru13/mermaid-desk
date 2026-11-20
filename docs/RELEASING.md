@@ -13,6 +13,8 @@ tag vX.Y.Z  ->  build.yml
                   |- ubuntu-22.04    -> deb + AppImage
                   `- first job creates a DRAFT release whose body is the
                      CHANGELOG.md section for X.Y.Z; all jobs attach assets
+                -> final job hashes the assets, uploads SHA256SUMS.txt and
+                   appends a checksums block to the body
                 -> you inspect the draft and publish it
 ```
 
@@ -115,11 +117,21 @@ Both fail in seconds, before any asset exists.
 gh release view v1.0.1
 ```
 
-Check three things:
+Check four things:
 
-1. The body matches the changelog section.
-2. Six assets are present: `.exe`, `.msi`, `.dmg`, `.app.tar.gz`, `.deb`, `.AppImage`.
-3. `draft` is `true` and the tag is `v1.0.1`.
+1. The body starts with the changelog section for this version.
+2. **The body ends with a `### Checksums` block** and `SHA256SUMS.txt` is an asset.
+   The block is generated from the attached files, so it can be verified directly.
+3. Seven assets are present: `.exe`, `.msi`, `.dmg`, `.app.tar.gz`, `.deb`,
+   `.AppImage`, `SHA256SUMS.txt`.
+4. `draft` is `true` and the tag matches the version.
+
+To verify a download against the published list:
+
+```bash
+gh release download v1.1.0 --dir assets
+cd assets && sha256sum -c SHA256SUMS.txt
+```
 
 ### 7. Publish
 

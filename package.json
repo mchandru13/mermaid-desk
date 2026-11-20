@@ -46,6 +46,9 @@
                             "vite":  "^7.1.0",
                             "vitest":  "^3.2.0"
                         },
+    "overrides":  {
+                      "dompurify":  "$dompurify"
+                  },
     "allowScripts":  {
                          "esbuild@0.28.2":  true
                      }

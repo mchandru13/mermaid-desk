@@ -544,10 +544,33 @@ fn open_dropped_impl(access: &DocumentAccess, paths: Vec<String>) -> Vec<Documen
     documents
 }
 
+/// Resolve a path that may be revealed, refusing anything the user did not open
+/// or save in this session.
+fn reveal_target(access: &DocumentAccess, path: &str) -> AppResult<PathBuf> {
+    let candidate = PathBuf::from(path);
+    if !candidate.is_absolute() {
+        return Err(AppError::forbidden(
+            "Only absolute file paths are supported.",
+        ));
+    }
+    let canonical = canonical_existing(&candidate)?;
+    if !access.is_authorized(&canonical) {
+        return Err(AppError::forbidden(
+            "That file was not opened in this session.",
+        ));
+    }
+    Ok(canonical)
+}
+
 /// Reveal a saved document in the platform file manager.
 #[tauri::command]
-pub fn reveal_document(app: AppHandle, path: String) -> AppResult<()> {
-    tauri_plugin_opener::reveal_item_in_dir(PathBuf::from(path))
+pub fn reveal_document(
+    app: AppHandle,
+    path: String,
+    access: State<'_, DocumentAccess>,
+) -> AppResult<()> {
+    let target = reveal_target(&access, &path)?;
+    tauri_plugin_opener::reveal_item_in_dir(target)
         .map_err(|err| AppError::io(format!("Cannot reveal the file: {err}")))?;
     let _ = app;
     Ok(())
@@ -572,6 +595,46 @@ mod tests {
         assert!(!has_diagram_extension(Path::new("diagram.exe")));
         assert!(!has_diagram_extension(Path::new("no-extension")));
         assert!(!has_diagram_extension(Path::new("archive.mmd.zip")));
+    }
+
+    #[test]
+    fn reveal_requires_authorisation() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("diagram.mmd");
+        fs::write(&path, "graph TD").unwrap();
+        let access = DocumentAccess::default();
+
+        // Nothing was opened, so the webview may not open Explorer here.
+        assert_eq!(
+            reveal_target(&access, path.to_str().unwrap())
+                .unwrap_err()
+                .code,
+            "forbidden"
+        );
+
+        access.authorize(&canonical_existing(&path).unwrap());
+        assert_eq!(
+            reveal_target(&access, path.to_str().unwrap()).unwrap(),
+            canonical_existing(&path).unwrap()
+        );
+    }
+
+    #[test]
+    fn reveal_refuses_relative_and_missing_paths() {
+        let access = DocumentAccess::default();
+        assert_eq!(
+            reveal_target(&access, "diagram.mmd").unwrap_err().code,
+            "forbidden"
+        );
+
+        let dir = tempfile::tempdir().unwrap();
+        let missing = dir.path().join("gone.mmd");
+        assert_eq!(
+            reveal_target(&access, missing.to_str().unwrap())
+                .unwrap_err()
+                .code,
+            "io"
+        );
     }
 
     #[test]
