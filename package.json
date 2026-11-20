@@ -16,7 +16,10 @@
                     "test:watch":  "vitest",
                     "test:e2e":  "playwright test",
                     "typecheck":  "tsc --noEmit",
-                    "test:desktop":  "node scripts/desktop-e2e.mjs"
+                    "test:desktop":  "node scripts/desktop-e2e.mjs",
+                    "test:scripts":  "node --test scripts/release-notes.test.mjs scripts/set-version.test.mjs",
+                    "release:notes":  "node scripts/release-notes.mjs",
+                    "release:version":  "node scripts/set-version.mjs"
                 },
     "dependencies":  {
                          "@tauri-apps/api":  "^2.12.5",

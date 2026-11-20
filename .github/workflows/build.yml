@@ -60,6 +60,21 @@ jobs:
 
       - run: npm ci
 
+      # Fail in seconds, before a single bundle is built, when the tag and the
+      # tree disagree. A tag that does not match the binaries makes the release
+      # history a lie.
+      - name: Check tag matches the app version
+        if: startsWith(github.ref, 'refs/tags/')
+        run: node scripts/set-version.mjs --check --tag "${{ github.ref_name }}"
+
+      # The draft body is the changelog section for this version, so the
+      # repository and the release page cannot drift apart. Missing section =
+      # hard failure, not an empty release.
+      - name: Extract release notes
+        if: startsWith(github.ref, 'refs/tags/')
+        id: notes
+        run: node scripts/release-notes.mjs "${{ github.ref_name }}" --github-output
+
       - name: Build bundles
         uses: tauri-apps/tauri-action@v1
         env:
@@ -68,6 +83,7 @@ jobs:
           # Empty on workflow_dispatch, so no release is created.
           tagName: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || '' }}
           releaseName: ${{ startsWith(github.ref, 'refs/tags/') && format('MermaidDesk {0}', github.ref_name) || '' }}
+          releaseBody: ${{ steps.notes.outputs.body }}
           releaseDraft: true
           prerelease: false
           args: --bundles ${{ matrix.bundles }}

@@ -114,7 +114,7 @@ Two GitHub Actions workflows live in `.github/workflows/`:
 | Workflow | Trigger | What it does |
 | --- | --- | --- |
 | `ci.yml` | push to `main`, pull request, manual | frontend type-check + Vitest + production build; Playwright browser E2E on that bundle; Rust `fmt`/`clippy -D warnings`/tests on **Windows, macOS and Ubuntu** |
-| `build.yml` | manual, or pushing a `v*` tag | `tauri-action` bundles on all three platforms. Manual runs upload workflow artifacts; a tag also creates a **draft GitHub release** with the installers attached |
+| `build.yml` | manual, or pushing a `v*` tag | `tauri-action` bundles on all three platforms. Manual runs upload workflow artifacts; a tag also creates a **draft GitHub release** with the installers attached and notes taken from `CHANGELOG.md` |
 
 The 35-check desktop suite stays local (`npm run test:desktop`): it drives the real
 Tauri window with `tauri-driver`, native dialogs and WebView2, which the hosted runners
@@ -123,11 +123,16 @@ do not provide. Everything else is covered in CI.
 To cut a release:
 
 ```bash
-git tag v1.0.0
-git push origin v1.0.0
+node scripts/set-version.mjs 1.0.1   # updates all four version files
+# add the "## [1.0.1]" section to CHANGELOG.md, then:
+git tag -a v1.0.1 -m "MermaidDesk 1.0.1"
+git push origin v1.0.1
 ```
 
-Then review and publish the draft release that `build.yml` creates.
+The draft release's body is extracted from `CHANGELOG.md`, and the workflow refuses
+to build if the tag and the app version disagree. The full procedure — including
+previews, rollback and publishing — is in [docs/RELEASING.md](docs/RELEASING.md).
+Release history lives in [CHANGELOG.md](CHANGELOG.md).
 
 ## Keyboard shortcuts
 
