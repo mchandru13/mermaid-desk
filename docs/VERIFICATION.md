@@ -440,6 +440,26 @@ Four new templates plus the hardening work, verified on the *released* installer
 | --- | --- | --- |
 | `MermaidDesk_1.3.0_x64-setup.exe` | 6,676,952 B | `AD389BE5944239669EB44C1944E8A4E7E704AF624472DF9F76BB7BEC0D99B83` |
 
+### Release 1.3.1
+
+Restores the Help menu, verified on the *released* installer:
+
+- Tag run [44920591676](https://github.com/mchandru13/mermaid-desk/actions/runs/44920591676):
+  three bundles plus the **Checksums** job green on the first push; seven assets.
+- `sha256sum -c SHA256SUMS.txt` for the downloaded
+  `MermaidDesk_1.3.1_x64-setup.exe` → **OK** (`998793b1…`).
+- The downloaded installer was installed silently and reported `DisplayVersion 1.3.1`.
+- The whole desktop suite was run against that installed binary
+  (`MERMAIDDESK_APP=…`): **54/54 checks**.
+- The reported defect was re-tested directly: with 1.3.0 installed, invoking each Help
+  item through the real native menu opened no dialog (`[]`); with the 1.3.1 installer,
+  the same probe opens `Keyboard shortcuts`, `MermaidDesk` and `Diagram templates`.
+  That comparison is the evidence the fix reached users, not just `main`.
+
+| Released asset | Size | SHA-256 |
+| --- | --- | --- |
+| `MermaidDesk_1.3.1_x64-setup.exe` | 6,677,144 B | `998793B118A2BC5830C81215CCED9B239EF96B52A6A5A33B044718C8F67B1ED7` |
+
 ## 6. REA evidence for the shipped build
 
 | Item | Evidence |
