@@ -9,6 +9,13 @@ it for people deciding whether to upgrade (see `docs/RELEASING.md`).
 
 ## [Unreleased]
 
+Nothing yet. Add entries here as changes land; move them into a dated version
+section when you cut a release.
+
+## [1.2.1] - 2026-11-21
+
+A security fix for the beside-export; no new features.
+
 ### Security
 
 - "Export beside diagram" no longer lets the webview authorise a file replacement.
@@ -22,7 +29,7 @@ it for people deciding whether to upgrade (see `docs/RELEASING.md`).
 ### Verification
 
 67 Rust tests, 64 Vitest tests, 25 Playwright scenarios and 54 checks against the
-installed Windows build. The desktop suite now declines and then approves the replace
+installed Windows build. The desktop suite declines and then approves the replace
 prompt and asserts the exported file is untouched after the first and rewritten after
 the second.
 
