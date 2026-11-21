@@ -259,6 +259,28 @@ test("runs native-menu file actions", async ({ page }) => {
   await expect(page.locator('[role="tab"]')).toHaveCount(before);
 });
 
+test("every Help menu item opens its dialog", async ({ page }) => {
+  // The menu emits action ids that used to disagree with the handler ("shortcuts"
+  // vs "toggle-shortcuts"), and About and Templates had no handler at all, so all
+  // three did nothing. Assert the ids the native menu actually sends.
+  const cases = [
+    { action: "toggle-shortcuts", dialog: "Keyboard shortcuts" },
+    { action: "open-about", dialog: "MermaidDesk" },
+  ];
+  for (const { action, dialog } of cases) {
+    await page.evaluate((id) => window.__MERMAIDDESK_TEST__?.emitMenuAction(id), action);
+    await expect(page.locator(`[role="dialog"][aria-label="${dialog}"]`)).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(page.locator('[role="dialog"]')).toHaveCount(0);
+  }
+
+  // Templates has no aria-label of its own, so assert on its insert button.
+  await page.evaluate(() => window.__MERMAIDDESK_TEST__?.emitMenuAction("open-templates"));
+  await expect(page.locator('[data-testid="insert-template"]')).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.locator('[role="dialog"]')).toHaveCount(0);
+});
+
 test("opens files handed over by the OS after startup", async ({ page }) => {
   await page.evaluate(() => {
     window.__MERMAIDDESK_TEST__?.seedFile(

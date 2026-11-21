@@ -333,6 +333,12 @@ export default function App() {
         case "toggle-shortcuts":
           setShowShortcuts((value) => !value);
           break;
+        case "open-templates":
+          setShowTemplates(true);
+          break;
+        case "open-about":
+          setShowAbout(true);
+          break;
         case "find":
           setPreviewVisible(true);
           editorApi.current?.find();

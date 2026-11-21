@@ -9,8 +9,19 @@ it for people deciding whether to upgrade (see `docs/RELEASING.md`).
 
 ## [Unreleased]
 
-Nothing yet. Add entries here as changes land; move them into a dated version
-section when you cut a release.
+### Fixed
+
+- The **Help** menu items did nothing. The native menu sent `shortcuts`, `about` and
+  `templates`, but the frontend only understood `toggle-shortcuts` and had no handler
+  for the other two, so every Help item fell through to a no-op. The menu now sends the
+  same action names the frontend uses (`toggle-shortcuts`, `open-about`,
+  `open-templates`), and a Playwright test asserts that each one opens its dialog. The
+  toolbar buttons were unaffected, which is why the problem was easy to miss.
+
+### Verification
+
+70 Vitest, 69 Rust and 31 release-tooling tests, 26 Playwright scenarios and 54 checks
+against the installed Windows build.
 
 ## [1.3.0] - 2026-11-21
 

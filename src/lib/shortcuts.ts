@@ -23,6 +23,8 @@ export type ShortcutAction =
   | "toggle-theme"
   | "toggle-preview"
   | "toggle-shortcuts"
+  | "open-templates"
+  | "open-about"
   | "find"
   | "quit";
 

@@ -75,9 +75,10 @@ pub fn install<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
         .item(&toggle_theme)
         .build()?;
 
-    let templates = MenuItemBuilder::with_id("templates", "Insert Template...").build(app)?;
-    let shortcuts = MenuItemBuilder::with_id("shortcuts", "Keyboard Shortcuts\tF1").build(app)?;
-    let about = MenuItemBuilder::with_id("about", "About MermaidDesk").build(app)?;
+    let templates = MenuItemBuilder::with_id("open-templates", "Insert Template...").build(app)?;
+    let shortcuts =
+        MenuItemBuilder::with_id("toggle-shortcuts", "Keyboard Shortcuts\tF1").build(app)?;
+    let about = MenuItemBuilder::with_id("open-about", "About MermaidDesk").build(app)?;
     let help_menu = SubmenuBuilder::new(app, "Help")
         .item(&templates)
         .separator()

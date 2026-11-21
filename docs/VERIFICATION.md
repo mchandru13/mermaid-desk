@@ -13,7 +13,7 @@ This report records what was actually executed. Anything not executed is listed 
 | --- | --- | --- |
 | Rust unit/integration | `cargo test` (in `src-tauri`) | **69 passed, 0 failed** |
 | Frontend unit/integration | `npm run test` (Vitest) | **70 passed, 0 failed** across 6 files |
-| Production UI E2E | `npm run build && npm run test:e2e` (Playwright, Chromium 159) | **25 passed, 0 failed** |
+| Production UI E2E | `npm run build && npm run test:e2e` (Playwright, Chromium 159) | **26 passed, 0 failed** |
 | Desktop E2E | `npm run test:desktop` (tauri-driver + WebView2 + real Rust binary) | **54 checks passed** |
 | Release tooling | `npm run test:scripts` (node --test) | **31 passed, 0 failed** |
 | Type check | `npx tsc --noEmit` | clean |
