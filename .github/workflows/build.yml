@@ -72,8 +72,14 @@ jobs:
       # history a lie. The tag arrives through the environment: interpolating
       # ${{ github.ref_name }} into the script would let a crafted tag name
       # inject shell commands.
+      #
+      # `shell: bash` is explicit because the matrix runs on three operating
+      # systems and the default differs: bash on Linux/macOS, pwsh on Windows,
+      # where `$TAG` is an unset local variable rather than the environment
+      # variable and the guard silently receives an empty value.
       - name: Check tag matches the app version
         if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
         env:
           TAG: ${{ github.ref_name }}
         run: node scripts/set-version.mjs --check --tag "$TAG"
@@ -84,6 +90,7 @@ jobs:
       - name: Extract release notes
         if: startsWith(github.ref, 'refs/tags/')
         id: notes
+        shell: bash
         env:
           TAG: ${{ github.ref_name }}
         run: node scripts/release-notes.mjs "$TAG" --github-output

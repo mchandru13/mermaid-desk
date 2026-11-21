@@ -89,10 +89,105 @@ export function structureProblems(text) {
   return problems;
 }
 
+/**
+ * Catch a `$VAR` that only works in bash.
+ *
+ * On the Windows runner the default shell is pwsh, where `$TAG` is an unset
+ * local variable and `$env:TAG` is the environment. A step that reads an `env:`
+ * value as `"$TAG"` therefore receives an empty string on Windows only — which
+ * is exactly how the tag guard passed on Linux and macOS and failed on Windows.
+ *
+ * A job that can run on Windows must say `shell: bash` when it uses POSIX
+ * variable syntax. Two rules keep this from firing on correct code:
+ *
+ *  - only jobs that actually target Windows are checked, so an ubuntu-only job
+ *    may use `$GITHUB_REF_NAME` freely;
+ *  - only UPPER_CASE names are treated as environment variables. A PowerShell
+ *    local such as `$edge` is genuinely a shell variable and is left alone.
+ */
+export function shellProblems(text) {
+  const lines = text.split(/\r?\n/);
+  const problems = [];
+
+  // Job blocks: `  name:` at indent 2 under `jobs:`.
+  const jobStarts = [];
+  let inJobs = false;
+  lines.forEach((line, index) => {
+    if (/^jobs:\s*$/.test(line)) {
+      inJobs = true;
+      return;
+    }
+    if (!inJobs) return;
+    if (/^[A-Za-z_]/.test(line)) {
+      inJobs = false;
+      return;
+    }
+    const job = /^ {2}([A-Za-z0-9_-]+):\s*$/.exec(line);
+    if (job) jobStarts.push({ name: job[1], index });
+  });
+
+  for (const [position, job] of jobStarts.entries()) {
+    const start = job.index;
+    const end = position + 1 < jobStarts.length ? jobStarts[position + 1].index : lines.length;
+    const block = lines.slice(start, end);
+    if (!/windows/i.test(block.join("\n"))) continue;
+
+    for (let index = start; index < end; index += 1) {
+      const match = /^(\s*)(?:-\s+)?run:(.*)$/.exec(lines[index]);
+      if (!match) continue;
+      const indent = match[1].length;
+
+      // A step's keys can precede `run:` (`shell:` is usually above it), so find
+      // the enclosing "- " entry at or above this line and use its indentation.
+      let dashIndent = null;
+      let stepStart = index;
+      for (let back = index; back >= start; back -= 1) {
+        const candidate = lines[back];
+        if (candidate.trim() === "") continue;
+        const candidateIndent = candidate.length - candidate.trimStart().length;
+        if (/^\s*-\s/.test(candidate) && candidateIndent <= indent) {
+          dashIndent = candidateIndent;
+          stepStart = back;
+          break;
+        }
+        if (candidateIndent < indent - 2) break;
+      }
+      const boundary = dashIndent ?? indent;
+
+      let stepEnd = index + 1;
+      for (; stepEnd < end; stepEnd += 1) {
+        const body = lines[stepEnd];
+        if (body.trim() === "") continue;
+        const bodyIndent = body.length - body.trimStart().length;
+        if (bodyIndent < boundary || (bodyIndent === boundary && /^-\s/.test(body.trimStart()))) break;
+      }
+      const step = lines.slice(stepStart, stepEnd);
+      if (step.some((line) => /^\s*shell:\s*bash\s*$/.test(line))) continue;
+
+      const inline = match[2].trim();
+      const bodyLines = inline && !/^[|>]/.test(inline) ? [inline] : step.slice(1);
+      for (const line of bodyLines) {
+        if (/\$env:|%[A-Za-z_]+%/.test(line)) continue;
+        const posix = /\$\{?([A-Z][A-Z0-9_]*)\}?/.exec(line);
+        if (posix) {
+          problems.push({
+            line: index + 1,
+            text: line.trim(),
+            reason: `$${posix[1]} is a shell variable; on Windows the default shell is pwsh and it expands to nothing`,
+          });
+          break;
+        }
+      }
+    }
+  }
+  return problems;
+}
+
 function main(args) {
   let failed = false;
   for (const file of workflowFiles(args)) {
     const text = readFileSync(file, "utf8");
+    const targetsWindows = /windows-(latest|\d)|self-hosted.*windows/i.test(text);
     for (const hit of runScriptLines(text)) {
       failed = true;
       console.error(`${file}:${hit.line}: expression inside a run: script`);
@@ -103,6 +198,12 @@ function main(args) {
       failed = true;
       console.error(`${file}:${problem.line}: ${problem.reason}`);
       console.error(`  ${problem.text}`);
+    }
+    for (const problem of shellProblems(text)) {
+      failed = true;
+      console.error(`${file}:${problem.line}: ${problem.reason}`);
+      console.error(`  ${problem.text}`);
+      console.error("  add `shell: bash` to the step on Windows runners");
     }
   }
   if (failed) return 1;

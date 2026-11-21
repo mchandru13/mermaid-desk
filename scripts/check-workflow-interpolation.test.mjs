@@ -107,3 +107,63 @@ test("accepts ordinary mappings, blocks and flow collections", () => {
   ].join("\n");
   assert.deepEqual(problemLines(yml), []);
 });
+
+import { shellProblems } from "./check-workflow-interpolation.mjs";
+
+const WIN = (step) =>
+  ["jobs:", "  build:", "    runs-on: windows-latest", "    steps:", step].join("\n");
+
+test("flags an env var used with POSIX syntax on a Windows runner", () => {
+  const yml = WIN(
+    [
+      "      - name: Guard",
+      "        env:",
+      "          TAG: x",
+      '        run: node a.mjs --tag "$TAG"',
+    ].join("\n"),
+  );
+  assert.equal(shellProblems(yml).length, 1);
+});
+
+test("accepts the same step once shell: bash is declared", () => {
+  const yml = WIN(
+    [
+      "      - name: Guard",
+      "        shell: bash",
+      "        env:",
+      "          TAG: x",
+      '        run: node a.mjs --tag "$TAG"',
+    ].join("\n"),
+  );
+  assert.deepEqual(shellProblems(yml), []);
+});
+
+test("ignores an ubuntu-only job", () => {
+  const yml = [
+    "jobs:",
+    "  checksums:",
+    "    runs-on: ubuntu-latest",
+    "    steps:",
+    '      - run: gh release download "$GITHUB_REF_NAME"',
+  ].join("\n");
+  assert.deepEqual(shellProblems(yml), []);
+});
+
+test("ignores a PowerShell local, which is genuinely a shell variable", () => {
+  const yml = WIN(
+    ["      - name: Probe", "        shell: pwsh", '        run: $edge = "x"; Write-Host $edge'].join("\n"),
+  );
+  assert.deepEqual(shellProblems(yml), []);
+});
+
+test("ignores an explicit PowerShell environment read", () => {
+  const yml = WIN(["      - name: Probe", "        shell: pwsh", "        run: Write-Host $env:TAG"].join("\n"));
+  assert.deepEqual(shellProblems(yml), []);
+});
+
+test("finds the shell key when it appears above run", () => {
+  const yml = WIN(
+    ["      - name: Guard", "        shell: bash", '        run: echo "$TAG"'].join("\n"),
+  );
+  assert.deepEqual(shellProblems(yml), []);
+});
