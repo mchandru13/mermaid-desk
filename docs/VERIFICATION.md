@@ -11,10 +11,11 @@ This report records what was actually executed. Anything not executed is listed 
 
 | Suite | Command | Result |
 | --- | --- | --- |
-| Rust unit/integration | `cargo test` (in `src-tauri`) | **67 passed, 0 failed** |
+| Rust unit/integration | `cargo test` (in `src-tauri`) | **69 passed, 0 failed** |
 | Frontend unit/integration | `npm run test` (Vitest) | **68 passed, 0 failed** across 6 files |
 | Production UI E2E | `npm run build && npm run test:e2e` (Playwright, Chromium 159) | **25 passed, 0 failed** |
 | Desktop E2E | `npm run test:desktop` (tauri-driver + WebView2 + real Rust binary) | **54 checks passed** |
+| Release tooling | `npm run test:scripts` (node --test) | **22 passed, 0 failed** |
 | Type check | `npx tsc --noEmit` | clean |
 
 Rust coverage: path canonicalisation, verbatim-path display, extension allowlists,
@@ -30,7 +31,8 @@ files)**, **recent-file trust (reads require authorisation or a persisted diagra
 recent; forged and legacy non-diagram recents are dropped)**, **native drop filtering
 (extension, absolute path, existence, 32-file cap, and queuing is not authorisation)**,
 **beside-export authorisation (a renderer flag cannot authorise a replacement; the
-decision moved behind a Rust-owned dialog), and PNG export signature rejection**,
+decision lives in `export_target`, which is unit-tested without a dialog and keeps the
+destination confined to the document's own stem), and PNG export signature rejection**,
 settings round-trip and split clamping, corrupt-file fallback, backup creation,
 recent-file cap.
 
@@ -475,5 +477,15 @@ Limitations encountered:
   is gone after "Yes", so a mis-click or a no-op write fails the run instead of passing
   silently. The click assumes an interactive desktop session with a real cursor
   position, like the rest of the native-dialog automation.
+- **Desktop suite is not in `ci.yml`:** it needs `tauri-driver`, a matched
+  `msedgedriver`, WebView2 and GUI automation, and adds many minutes per run.
+  `.github/workflows/desktop.yml` exists to carry it, and is **dispatch-only** until a
+  hosted runner has been observed to host it reliably; only then should it join `ci.yml`
+  on `windows-latest`. Running it locally for a release remains the gate in
+  `docs/RELEASING.md`.
+- **The security decision does not depend on that gap:** `export_target` decides
+  authorisation and whether a replacement needs consent, and it is covered by
+  `cargo test` on all three operating systems. The desktop suite additionally proves the
+  dialog collects the answer, but a regression in the decision itself fails CI.
 
 

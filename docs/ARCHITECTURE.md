@@ -34,7 +34,7 @@ that validates the request.
 | Risk | Control | Where |
 | --- | --- | --- |
 | Renderer reads arbitrary files | A path is readable only if the user authorised it in this session, or if it appears in the persisted recent list, so recents survive a restart. The webview cannot seed that list: `save_app_settings` keeps only authorised or already-persisted entries | `documents.rs` (`read_target`), `settings.rs` (`keep_trusted_recents`) |
-| Renderer writes arbitrary files | `save_document` requires a path already authorised this session; Save As and every export choose their destination through a native dialog owned by Rust, including the "replace this existing file?" decision for beside-exports | `documents.rs`, `export_document`, `export_beside_confirmed` |
+| Renderer writes arbitrary files | `save_document` requires a path already authorised this session; Save As and every export choose their destination through a native dialog owned by Rust, including the "replace this existing file?" decision for beside-exports | `documents.rs`, `export_document`, `export_target`, `export_beside_confirmed` |
 | Renderer opens Explorer at arbitrary paths | `reveal_document` requires authorisation, like writes and reads-with-dialog | `reveal_target` |
 | Path traversal / symlinks | Paths are canonicalised before authorisation and comparison; new files resolve against a canonical parent | `canonical_existing`, `canonical_target` |
 | Oversized / binary input | 8 MiB document cap, UTF-8 validation, 64 MiB export cap | `MAX_DOCUMENT_BYTES`, `MAX_EXPORT_BYTES` |
@@ -114,7 +114,7 @@ pans. The same numbers are used by the toolbar, the status bar, and keyboard sho
   and writes `<name>.svg`/`<name>.png` into the document's own folder
   (`export_beside_document`). That folder was already authorised by the Open/Save
   dialog. Replacing a file that already exists is confirmed by a native dialog owned
-  by Rust (`export_beside_confirmed`), not by the webview and not by a flag the
+  by Rust (`confirm_replace`, driven by `export_target`), not by the webview and not by a flag the
   renderer sends. This is also the path used by the automated desktop verification.
 * **Clipboard:** the same PNG the exporter produces is sent to Rust as base64;
   `copy_image_to_clipboard` validates it, decodes it to RGBA and writes it with

@@ -519,38 +519,91 @@ fn export_beside_confirmed(
 ) -> AppResult<String> {
     let (extension, _) = export_extension(kind)?;
     let document = canonical_existing(document_path)?;
-    if !access.is_authorized(&document) {
+    let target = export_target(access, &document, extension)?;
+
+    if let Some(occupied) = target.consent_target() {
+        if !confirm_replace(app, occupied) {
+            return Err(AppError::conflict(format!(
+                "{} was not replaced.",
+                display_path(occupied)
+            )));
+        }
+    }
+
+    write_beside(&target.path, kind, data)
+}
+
+/// Where a beside-export would write, and whether that needs the user's consent.
+#[derive(Debug)]
+struct BesideTarget {
+    path: PathBuf,
+    /// Set when the destination already exists and replacing it must be asked
+    /// about. `None` means the write may proceed without a prompt.
+    requires_consent: Option<PathBuf>,
+}
+
+impl BesideTarget {
+    /// The target to prompt about, when a prompt is needed.
+    fn consent_target(&self) -> Option<&Path> {
+        self.requires_consent.as_deref()
+    }
+}
+
+/// Decide whether a beside-export may write, and whether it must ask first.
+///
+/// This is the security decision, kept free of the dialog so it can be unit
+/// tested. It deliberately takes no renderer-supplied input: the destination is
+/// derived from the authorised document, so nothing the webview sends can widen
+/// it or stand in for consent.
+fn export_target(
+    access: &DocumentAccess,
+    document: &Path,
+    extension: &str,
+) -> AppResult<BesideTarget> {
+    if !access.is_authorized(document) {
         return Err(AppError::forbidden(
             "Export beside is only available for a document opened in this session.",
         ));
     }
 
-    let target = document.with_extension(extension);
-    if target.exists() {
-        let replace = app
-            .dialog()
-            .message(format!(
-                "{} already exists next to this diagram. Replace it?",
-                display_path(&target)
-            ))
-            .title("Replace existing export?")
-            .buttons(MessageDialogButtons::YesNo)
-            .blocking_show();
-        if !replace {
-            return Err(AppError::conflict(format!(
-                "{} was not replaced.",
-                display_path(&target)
-            )));
-        }
-    }
+    let path = document.with_extension(extension);
+    let requires_consent = path.exists().then(|| path.clone());
+    Ok(BesideTarget {
+        path,
+        requires_consent,
+    })
+}
 
-    export_beside_impl(access, &document, kind, data)
+/// Ask whether an existing file may be replaced.
+///
+/// Kept separate so the branch can be unit-tested: the answer is the security
+/// decision, and the dialog only collects it. The renderer cannot reach this —
+/// it holds no permission flag at all.
+fn confirm_replace(app: &AppHandle, target: &Path) -> bool {
+    app.dialog()
+        .message(format!(
+            "{} already exists next to this diagram. Replace it?",
+            display_path(target)
+        ))
+        .title("Replace existing export?")
+        .buttons(MessageDialogButtons::YesNo)
+        .blocking_show()
+}
+
+/// Write the already-authorised beside-export. The caller owns consent.
+fn write_beside(target: &Path, kind: &str, data: &str) -> AppResult<String> {
+    let bytes = decode_export_payload(kind, data)?;
+    write_atomic(target, &bytes)?;
+    Ok(display_path(target))
 }
 
 /// Implementation of the beside-export, split out so it can be tested directly.
 ///
 /// The caller is responsible for consenting to a replacement; this function
-/// writes unconditionally once the document itself is authorised.
+/// writes unconditionally once the document itself is authorised. Production
+/// reaches the same logic through `export_beside_confirmed`, which adds the
+/// prompt.
+#[cfg(test)]
 fn export_beside_impl(
     access: &DocumentAccess,
     document_path: &Path,
@@ -559,16 +612,9 @@ fn export_beside_impl(
 ) -> AppResult<String> {
     let (extension, _) = export_extension(kind)?;
     let document = canonical_existing(document_path)?;
-    if !access.is_authorized(&document) {
-        return Err(AppError::forbidden(
-            "Export beside is only available for a document opened in this session.",
-        ));
-    }
-
-    let target = document.with_extension(extension);
-    let bytes = decode_export_payload(kind, data)?;
-    write_atomic(&target, &bytes)?;
-    Ok(display_path(&target))
+    // Same authorisation decision as the real command, minus the prompt.
+    let target = export_target(access, &document, extension)?;
+    write_beside(&target.path, kind, data)
 }
 
 /// Drain documents handed to the process by the OS.
@@ -967,6 +1013,54 @@ mod tests {
         let written = export_beside_impl(&access, &path, "svg", svg).expect("beside");
         assert!(written.ends_with("beside.svg"));
         assert!(dir.path().join("beside.svg").exists());
+    }
+
+    /// The decision the dialog collects, tested without a dialog: an
+    /// unauthorised document is refused, a fresh target needs no consent, and a
+    /// target that already exists always requires it.
+    #[test]
+    fn export_target_decides_authorisation_and_consent() {
+        let (dir, path) = temp_file("target.mmd", b"graph TD\n");
+        let document = canonical_existing(&path).unwrap();
+        let access = DocumentAccess::default();
+
+        let refused = export_target(&access, &document, "svg").unwrap_err();
+        assert_eq!(refused.code, "forbidden");
+
+        access.authorize(&document);
+        let fresh = export_target(&access, &document, "svg").expect("target");
+        assert!(fresh.path.ends_with("target.svg"));
+        assert!(
+            fresh.requires_consent.is_none(),
+            "a file that does not exist must not prompt"
+        );
+
+        // The renderer holds no flag that can skip this: existence alone decides.
+        fs::write(dir.path().join("target.svg"), b"existing").unwrap();
+        let occupied = export_target(&access, &document, "svg").expect("target");
+        assert_eq!(
+            occupied.requires_consent.as_deref(),
+            Some(occupied.path.as_path()),
+            "an existing file must require consent"
+        );
+    }
+
+    /// The extension is fixed by `export_extension`, so the renderer cannot
+    /// steer the write to another name or another directory.
+    #[test]
+    fn export_target_is_confined_to_the_document_stem() {
+        let (_dir, path) = temp_file("confined.md", b"# notes\n");
+        let document = canonical_existing(&path).unwrap();
+        let access = DocumentAccess::default();
+        access.authorize(&document);
+
+        for (kind, expected) in [("svg", "confined.svg"), ("png", "confined.png")] {
+            let (extension, _) = export_extension(kind).unwrap();
+            let target = export_target(&access, &document, extension).expect("target");
+            assert!(target.path.ends_with(expected));
+            assert_eq!(target.path.parent(), document.parent());
+        }
+        assert_eq!(export_extension("exe").unwrap_err().code, "invalid");
     }
 
     /// `kind = "png"` must not be a generic byte writer: arbitrary base64 used to

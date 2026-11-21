@@ -1,0 +1,97 @@
+name: Desktop E2E
+
+# The desktop suite drives the real Tauri binary through tauri-driver and
+# WebView2. It is kept out of ci.yml because it needs GUI automation and adds
+# many minutes per run.
+#
+# It starts as dispatch-only on purpose: whether a hosted Windows runner can
+# host WebView2 with a matched msedgedriver has to be observed, not assumed.
+# Once this is reliably green it belongs in ci.yml on windows-latest.
+on:
+  workflow_dispatch:
+  # Uncomment once the run below is reliable. Keep it out of every push until
+  # then, so a hosting limitation cannot make main permanently red.
+  # pull_request:
+  #   paths:
+  #     - "src/**"
+  #     - "src-tauri/**"
+  #     - "scripts/desktop-e2e.mjs"
+  #     - "scripts/desktop/**"
+
+concurrency:
+  group: desktop-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  desktop:
+    name: Desktop (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+
+      - run: npm ci
+
+      - name: Install tauri-driver
+        run: cargo install tauri-driver --locked
+
+      # msedgedriver must match the WebView2 runtime the runner already has, so
+      # the version is read from the installed Edge rather than pinned here.
+      - name: Install a matching msedgedriver
+        shell: pwsh
+        run: |
+          $edge = (Get-Item "C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe" `
+            -ErrorAction SilentlyContinue).VersionInfo.ProductVersion
+          if (-not $edge) { throw "Edge not found; cannot match msedgedriver" }
+          $major = ($edge -split '\.')[0]
+          Write-Host "Edge $edge (major $major)"
+
+          $url = "https://msedgedriver.microsoft.com/$edge/edgedriver_win64.zip"
+          $out = Join-Path $env:RUNNER_TEMP "edgedriver.zip"
+          New-Item -ItemType Directory -Force -Path "tools\edgedriver" | Out-Null
+          try {
+            Invoke-WebRequest -Uri $url -OutFile $out -UseBasicParsing
+          } catch {
+            throw "No msedgedriver published for Edge $edge ($url)"
+          }
+          Expand-Archive -Path $out -DestinationPath "tools\edgedriver" -Force
+          & "tools\edgedriver\msedgedriver.exe" --version
+
+      - name: Build the app
+        run: npm run tauri:build
+
+      # The suite launches the release binary itself; kill any stale instance
+      # first, because the single-instance plugin makes a second launch exit 0.
+      - name: Run the desktop suite
+        shell: pwsh
+        run: |
+          Get-Process -Name mermaid-desk -ErrorAction SilentlyContinue | Stop-Process -Force
+          npm run test:desktop
+
+      - name: Keep the artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: desktop-artifacts
+          path: |
+            ${{ runner.temp }}/mermaiddesk-desktop-*
+          retention-days: 7
+          if-no-files-found: ignore

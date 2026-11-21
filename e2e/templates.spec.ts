@@ -45,12 +45,22 @@ test("centres and fits every built-in template", async ({ page }) => {
   const results: TemplateGeometry[] = [];
 
   for (const title of TEMPLATES) {
+    const canvasSvg = page.locator('[data-testid="preview-canvas"] svg');
+    // `data-render-id` is stamped with a fresh nonce on every render, so waiting
+    // for it to change is a real "this template has painted" signal. A fixed
+    // sleep here measured the previous template whenever a lazy Mermaid chunk
+    // was still arriving on a cold first load.
+    const before = await canvasSvg.getAttribute("data-render-id");
+
     await page.locator('[data-testid="templates-button"]').click();
     await page.locator(".template-item", { hasText: title }).first().click();
     await page.locator('[data-testid="insert-template"]').click();
-    await expect(page.locator('[data-testid="preview-canvas"] svg')).toBeVisible();
+    await expect(canvasSvg).toBeVisible();
+    await expect(canvasSvg).not.toHaveAttribute("data-render-id", before ?? "");
     await expect(page.locator('[data-testid="diagnostic"]')).toBeHidden();
-    await page.waitForTimeout(400);
+    // The identifier changes when the SVG is replaced; give the layout one frame
+    // to settle so the transform applied by the preview is included.
+    await page.evaluate(() => new Promise(requestAnimationFrame));
 
     results.push(
       await page.evaluate((label) => {

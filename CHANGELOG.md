@@ -24,6 +24,16 @@ it for people deciding whether to upgrade (see `docs/RELEASING.md`).
   read from the environment, the token is no longer persisted into `.git/config`, and
   `contents: write` is granted per job instead of to the whole workflow.
 
+### Changed
+
+- CI now rejects a workflow that puts a `${{ … }}` expression inside a `run:` script,
+  which is the shape the tag-name bug took.
+- The beside-export decision moved into `export_target`, so authorisation and "does
+  replacing this need consent" are covered by `cargo test` on all three platforms
+  rather than only by GUI automation.
+- The desktop suite gained a `.github/workflows/desktop.yml` carrier. It is
+  dispatch-only until a hosted Windows runner is confirmed to host WebView2 reliably.
+
 ## [1.2.1] - 2026-11-21
 
 A security fix for the beside-export; no new features.
