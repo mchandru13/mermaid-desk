@@ -12,7 +12,7 @@ This report records what was actually executed. Anything not executed is listed 
 | Suite | Command | Result |
 | --- | --- | --- |
 | Rust unit/integration | `cargo test` (in `src-tauri`) | **69 passed, 0 failed** |
-| Frontend unit/integration | `npm run test` (Vitest) | **68 passed, 0 failed** across 6 files |
+| Frontend unit/integration | `npm run test` (Vitest) | **70 passed, 0 failed** across 6 files |
 | Production UI E2E | `npm run build && npm run test:e2e` (Playwright, Chromium 159) | **25 passed, 0 failed** |
 | Desktop E2E | `npm run test:desktop` (tauri-driver + WebView2 + real Rust binary) | **54 checks passed** |
 | Release tooling | `npm run test:scripts` (node --test) | **25 passed, 0 failed** |
@@ -52,10 +52,13 @@ persistence, **copying the diagram as an opaque and a transparent PNG (decoded i
 Chromium and checked pixel by pixel)**, and a run with **every non-localhost request
 aborted**.
 
-New in this pass: a template-geometry test walks **all 15 built-in templates** and
+New in this pass: a template-geometry test walks **all 19 built-in templates** and
 asserts each is centred on its painted artwork (not the viewBox), fits the pane, has no
 percentage width or `max-width` cap on the root SVG, draws real content, keeps the Gantt
-chart's width sane, and renders every Block-diagram box. A diagnostics test asserts the
+chart's width sane, and renders every Block-diagram box. It also asserts Mermaid's own
+`aria-roledescription` for the Architecture, Packet, Kanban and Treemap templates, so a
+template whose syntax stops parsing — and therefore falls back to the default flowchart —
+fails instead of passing as "centred". A diagnostics test asserts the
 reported line matches the edited file through front matter and `%%` comments. An export
 test asserts SVG files carry a background aligned to the viewBox, tight/centred bounds,
 theme text colours, and no script. Clipboard tests decode the copied PNG and assert the

@@ -24,6 +24,10 @@ const TEMPLATES = [
   "XY chart",
   "Block diagram",
   "Sankey",
+  "Treemap",
+  "Packet diagram",
+  "Architecture",
+  "Kanban board",
 ];
 
 interface TemplateGeometry {
@@ -36,6 +40,8 @@ interface TemplateGeometry {
   painted: number;
   contentWidth: number;
   labels: string[];
+  /** Mermaid's own type for the rendered drawing. */
+  role: string | null;
 }
 
 test("centres and fits every built-in template", async ({ page }) => {
@@ -45,7 +51,7 @@ test("centres and fits every built-in template", async ({ page }) => {
   const results: TemplateGeometry[] = [];
 
   for (const title of TEMPLATES) {
-    const canvasSvg = page.locator('[data-testid="preview-canvas"] svg');
+    const canvasSvg = page.locator('[data-testid="preview-canvas"] > svg');
     // `data-render-id` is stamped with a fresh nonce on every render, so waiting
     // for it to change is a real "this template has painted" signal. A fixed
     // sleep here measured the previous template whenever a lazy Mermaid chunk
@@ -53,7 +59,13 @@ test("centres and fits every built-in template", async ({ page }) => {
     const before = await canvasSvg.getAttribute("data-render-id");
 
     await page.locator('[data-testid="templates-button"]').click();
-    await page.locator(".template-item", { hasText: title }).first().click();
+    // Match the title element, not the whole button: "Architecture" also
+    // appears inside Block diagram's description, so hasText picked the wrong
+    // template and the geometry assertions silently measured the previous one.
+    await page
+      .locator(".template-item", { has: page.locator("strong", { hasText: title }) })
+      .first()
+      .click();
     await page.locator('[data-testid="insert-template"]').click();
     await expect(canvasSvg).toBeVisible();
     await expect(canvasSvg).not.toHaveAttribute("data-render-id", before ?? "");
@@ -101,6 +113,7 @@ test("centres and fits every built-in template", async ({ page }) => {
           labels: [...svg.querySelectorAll("g.node text, text")]
             .map((element) => element.textContent?.trim() ?? "")
             .filter(Boolean),
+          role: svg.getAttribute("aria-roledescription"),
         };
       }, title),
     );
@@ -140,4 +153,22 @@ test("centres and fits every built-in template", async ({ page }) => {
   const block = results.find((entry) => entry.label === "Block diagram")!;
   expect(block.labels.join(" ")).toContain("Rust file service");
   expect(block.labels.join(" ")).toContain("Settings store");
+
+  // These templates would still paint *something* if their syntax broke, so
+  // assert the Mermaid type actually rendered. A broken template falls back to
+  // the default flowchart, which changes this attribute — labels alone do not
+  // prove it, because the reference diagram shares some of them.
+  const roleOf = (label: string) => results.find((entry) => entry.label === label)?.role ?? null;
+  expect(roleOf("Architecture")).toBe("architecture");
+  expect(roleOf("Kanban board")).toBe("kanban");
+  expect(roleOf("Packet diagram")).toBe("packet");
+  expect(roleOf("Treemap")).toBe("treemap");
+
+  // Content that only these templates can produce.
+  const labelOf = (label: string) =>
+    (results.find((entry) => entry.label === label)?.labels.join(" ") ?? "").replace(/\s+/g, " ");
+  expect(labelOf("Architecture")).toContain("Rust core");
+  expect(labelOf("Kanban board")).toContain("Harden the export path");
+  expect(labelOf("Packet diagram")).toContain("Acknowledgment Number");
+  expect(labelOf("Treemap")).toContain("Recents");
 });

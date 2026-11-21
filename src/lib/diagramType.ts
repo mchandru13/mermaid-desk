@@ -11,7 +11,7 @@ export interface DiagramTypeInfo {
   family: "process" | "structure" | "time" | "data" | "other";
 }
 
-const TYPES: Record<string, DiagramTypeInfo> = {
+export const TYPES: Record<string, DiagramTypeInfo> = {
   graph: { keyword: "graph", label: "Flowchart", family: "process" },
   flowchart: { keyword: "flowchart", label: "Flowchart", family: "process" },
   sequencediagram: { keyword: "sequenceDiagram", label: "Sequence diagram", family: "structure" },
@@ -32,7 +32,6 @@ const TYPES: Record<string, DiagramTypeInfo> = {
   c4deployment: { keyword: "C4Deployment", label: "C4 deployment", family: "structure" },
   mindmap: { keyword: "mindmap", label: "Mind map", family: "structure" },
   timeline: { keyword: "timeline", label: "Timeline", family: "time" },
-  zenuml: { keyword: "zenuml", label: "ZenUML sequence", family: "structure" },
   "sankey-beta": { keyword: "sankey-beta", label: "Sankey diagram", family: "data" },
   "xychart-beta": { keyword: "xychart-beta", label: "XY chart", family: "data" },
   "block-beta": { keyword: "block-beta", label: "Block diagram", family: "structure" },

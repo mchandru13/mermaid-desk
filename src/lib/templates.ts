@@ -286,6 +286,68 @@ Preview,Screen only,15
 Corrections,Preview,20
 `,
   },
+  {
+    id: "treemap",
+    title: "Treemap",
+    description: "Nested area breakdown",
+    family: "data",
+    source: `treemap-beta
+"Documents"
+    "Diagrams": 42
+    "Notes": 18
+"Settings"
+    "Theme": 8
+    "Editor": 12
+    "Recents": 6
+`,
+  },
+  {
+    id: "packet",
+    title: "Packet diagram",
+    description: "Byte layout of a binary header",
+    family: "data",
+    source: `packet-beta
+0-15: "Source Port"
+16-31: "Destination Port"
+32-63: "Sequence Number"
+64-95: "Acknowledgment Number"
+96-99: "Data Offset"
+100-105: "Reserved"
+106-111: "Flags"
+112-127: "Window Size"
+`,
+  },
+  {
+    id: "architecture",
+    title: "Architecture",
+    description: "Services grouped inside a boundary",
+    family: "structure",
+    source: `architecture-beta
+    group app(cloud)[Desktop app]
+    service ui(server)[React UI] in app
+    service core(server)[Rust core] in app
+    service disk(database)[Local disk]
+
+    ui:R -- L:core
+    core:R -- L:disk
+`,
+  },
+  {
+    id: "kanban",
+    title: "Kanban board",
+    description: "Work items in columns",
+    family: "process",
+    source: `kanban
+  Todo
+    [Add template gallery filters]
+    [Reduce render time]
+  Doing
+    [Harden the export path]
+  Done
+    [Verify on Windows]
+    [Publish 1.2.1]
+`,
+  },
 ];
 
 export const TEMPLATE_FAMILIES: { key: Template["family"]; label: string }[] = [

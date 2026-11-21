@@ -26,6 +26,14 @@ it for people deciding whether to upgrade (see `docs/RELEASING.md`).
 
 ### Changed
 
+- The template gallery gained four diagram types that Mermaid already supported
+  but the app did not offer: **Architecture**, **Packet diagram**, **Kanban board**
+  and **Treemap**. All four render through the existing sanitisation and export path,
+  so they add no dependency and no new rendering surface.
+- The editor no longer claims two diagram types Mermaid 12 cannot draw. `zenuml`
+  needs an external plugin that is not bundled, and `usecase` is not a Mermaid diagram
+  at all; both produced a "No diagram type detected" error instead of rendering. A test
+  now checks every listed keyword against Mermaid's own parser.
 - CI now rejects a workflow that puts a `${{ … }}` expression inside a `run:` script,
   which is the shape the tag-name bug took, and rejects a plain YAML value containing
   `: ` — that one broke the CI file itself while this change was being made.
