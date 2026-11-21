@@ -363,35 +363,20 @@ export function useWorkspace({ confirm, promptUnsaved, notify }: WorkspaceOption
 
         if (options.beside && document.path) {
           try {
+            // Replacing an existing file is decided by a native dialog in Rust;
+            // the webview only reports the outcome.
             const savedPath = await platform.exportBesideDocument(
               document.path,
               kind,
               data,
-              false,
             );
             notify({
               text: `Exported ${kind.toUpperCase()} to ${savedPath}`,
               tone: "success",
             });
           } catch (error) {
+            // Declining the replace prompt is a cancellation, not a failure.
             if (errorCode(error) !== "conflict") throw error;
-            const overwrite = await confirm({
-              title: "Replace the existing export?",
-              message: `${name} already exists next to this diagram.`,
-              confirmLabel: "Replace",
-              tone: "danger",
-            });
-            if (!overwrite) return;
-            const savedPath = await platform.exportBesideDocument(
-              document.path,
-              kind,
-              data,
-              true,
-            );
-            notify({
-              text: `Exported ${kind.toUpperCase()} to ${savedPath}`,
-              tone: "success",
-            });
           }
           return;
         }
@@ -408,7 +393,7 @@ export function useWorkspace({ confirm, promptUnsaved, notify }: WorkspaceOption
         notify({ text: `Export failed: ${errorMessage(error)}`, tone: "error" });
       }
     },
-    [confirm, notify],
+    [notify],
   );
 
   const updateSettings = useCallback(

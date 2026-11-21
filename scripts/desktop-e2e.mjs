@@ -576,6 +576,70 @@ async function main() {
       check(png.length > 2000, "PNG export is a non-trivial image");
     }
 
+    /* ---------- 8b. Replacing an existing export asks Rust-owned consent ---------- */
+    // The files above now exist, so the next beside-export must prompt. The
+    // prompt lives in Rust (`export_beside_confirmed`), not the webview, so this
+    // is what proves a renderer-supplied flag can no longer authorise a replace.
+    const replaceTitle = "Replace existing export?";
+    const answerPrompt = (button) =>
+      execFileSync("powershell.exe", [
+        "-NoProfile",
+        "-File",
+        path.join(root, "scripts", "desktop", "dialog-answer.ps1"),
+        "-Title",
+        replaceTitle,
+        "-Button",
+        button,
+      ]).toString();
+
+    const svgBefore = await readFile(svgPath, "utf8");
+    // Prove the approval writes rather than merely re-reading cached markup:
+    // plant a sentinel in the existing file first.
+    const SENTINEL = "planted-by-the-desktop-suite";
+    await writeFile(svgPath, `${svgBefore}\n${SENTINEL}\n`);
+    // A thrown click must be reported as a failed check, not abort main().
+    const clickBeside = async () => {
+      try {
+        await clickMenuItem(driver, "Export SVG beside");
+        return "";
+      } catch (error) {
+        return `click failed: ${error.message}`;
+      }
+    };
+
+    const declineClick = await clickBeside();
+    let declined = declineClick;
+    if (!declined) {
+      try {
+        declined = answerPrompt("No");
+      } catch (error) {
+        declined = `failed: ${error.message}`;
+      }
+    }
+    check(!declineClick, `the beside export was triggered (${declineClick || "clicked"})`);
+    check(declined.includes("Replace it?"), `the replace prompt describes the file (${declined.trim()})`);
+    check(declined.includes("answered No"), "declining the replace prompt was accepted");
+    check(
+      (await readFile(svgPath, "utf8")).includes(SENTINEL),
+      "declining the prompt left the existing export untouched",
+    );
+
+    const acceptClick = await clickBeside();
+    let accepted = acceptClick;
+    if (!accepted) {
+      try {
+        accepted = answerPrompt("Yes");
+      } catch (error) {
+        accepted = `failed: ${error.message}`;
+      }
+    }
+    check(!acceptClick, `the beside export was triggered again (${acceptClick || "clicked"})`);
+    check(accepted.includes("answered Yes"), "approving the replace prompt was accepted");
+    const replaced = await readFile(svgPath, "utf8");
+    check(replaced.includes("<svg"), "approving the prompt rewrote the export");
+    check(!replaced.includes(SENTINEL), "the replacement overwrote the planted file");
+    check(!/<script/i.test(replaced), "the rewritten export is still clean markup");
+
     /* ---------- 9. Copy PNG to the real Windows clipboard ---------- */
     // Clear first so an image left by another app cannot make this pass.
     try {

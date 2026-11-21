@@ -34,7 +34,7 @@ that validates the request.
 | Risk | Control | Where |
 | --- | --- | --- |
 | Renderer reads arbitrary files | A path is readable only if the user authorised it in this session, or if it appears in the persisted recent list, so recents survive a restart. The webview cannot seed that list: `save_app_settings` keeps only authorised or already-persisted entries | `documents.rs` (`read_target`), `settings.rs` (`keep_trusted_recents`) |
-| Renderer writes arbitrary files | `save_document` requires a path already authorised this session; Save As and every export always show a native dialog owned by Rust | `documents.rs`, `export_document` |
+| Renderer writes arbitrary files | `save_document` requires a path already authorised this session; Save As and every export choose their destination through a native dialog owned by Rust, including the "replace this existing file?" decision for beside-exports | `documents.rs`, `export_document`, `export_beside_confirmed` |
 | Renderer opens Explorer at arbitrary paths | `reveal_document` requires authorisation, like writes and reads-with-dialog | `reveal_target` |
 | Path traversal / symlinks | Paths are canonicalised before authorisation and comparison; new files resolve against a canonical parent | `canonical_existing`, `canonical_target` |
 | Oversized / binary input | 8 MiB document cap, UTF-8 validation, 64 MiB export cap | `MAX_DOCUMENT_BYTES`, `MAX_EXPORT_BYTES` |
@@ -107,11 +107,12 @@ pans. The same numbers are used by the toolbar, the status bar, and keyboard sho
 * **PNG:** inline the SVG with an opaque theme background, load it through a `Blob`
   URL into an `Image`, draw it on a canvas at 2× (clamped to 8192 px), then send the
   base64 payload to Rust for a native write.
-* **Beside diagram:** for saved documents, "Export beside diagram" skips the dialog and
-  writes `<name>.svg`/`<name>.png` into the document's own folder
+* **Beside diagram:** for saved documents, "Export beside diagram" skips the file picker
+  and writes `<name>.svg`/`<name>.png` into the document's own folder
   (`export_beside_document`). That folder was already authorised by the Open/Save
-  dialog, and an existing file produces a confirmation prompt instead of a silent
-  overwrite. This is also the path used by the automated desktop verification.
+  dialog. Replacing a file that already exists is confirmed by a native dialog owned
+  by Rust (`export_beside_confirmed`), not by the webview and not by a flag the
+  renderer sends. This is also the path used by the automated desktop verification.
 * **Clipboard:** the same PNG the exporter produces is sent to Rust as base64;
   `copy_image_to_clipboard` validates it, decodes it to RGBA and writes it with
   `arboard`. The frontend never gets clipboard access and the image is never written to

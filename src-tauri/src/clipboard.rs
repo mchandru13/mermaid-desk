@@ -28,7 +28,9 @@ pub const MAX_IMAGE_DIMENSION: u32 = 10_000;
 /// 32 MP is 128 MiB of RGBA, which is the real allocation limit.
 pub const MAX_IMAGE_PIXELS: u64 = 32_000_000;
 
-const PNG_SIGNATURE: [u8; 8] = [0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a];
+/// PNG magic bytes, shared by the clipboard decoder and the export writer so
+/// the two cannot disagree about what counts as a PNG.
+pub(crate) const PNG_SIGNATURE: [u8; 8] = [0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a];
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]

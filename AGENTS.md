@@ -103,7 +103,10 @@ The webview is untrusted. These are load-bearing; do not weaken them for conveni
   `fs`, `dialog`, `shell`, `http`, updater, or clipboard capability. Filesystem and
   clipboard access exist only as Rust commands.
 - **Writes** require a path authorised earlier in the session (dialog, native drop, OS
-  hand-off, or a successful save).
+  hand-off, or a successful save). The one derived destination, the beside-export
+  `<stem>.svg`/`<stem>.png`, inherits the authorised document's folder but never its
+  trust: replacing an existing file there needs a native Rust dialog, and no
+  renderer-supplied flag may stand in for that.
 - **Reads** require that authorisation *or* membership in the persisted recent list, and
   only for `.mmd` / `.mermaid` / `.md` / `.txt`. Recent files are untrusted input:
   filter incoming lists to authorised/persisted entries and re-check the extension.

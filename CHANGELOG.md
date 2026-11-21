@@ -9,8 +9,22 @@ it for people deciding whether to upgrade (see `docs/RELEASING.md`).
 
 ## [Unreleased]
 
-Nothing yet. Add entries here as changes land; move them into a dated version
-section when you cut a release.
+### Security
+
+- "Export beside diagram" no longer lets the webview authorise a file replacement.
+  Previously the command wrote `<name>.svg`/`<name>.png` beside an open document and
+  treated a renderer-supplied `overwrite` flag as permission to replace an existing
+  file, so a compromised renderer could silently clobber or plant a same-named file the
+  app had never opened. Replacing an existing export now goes through a native dialog
+  owned by Rust. PNG exports must also begin with the PNG signature, so the export path
+  can no longer be used to write arbitrary bytes.
+
+### Verification
+
+67 Rust tests, 64 Vitest tests, 25 Playwright scenarios and 54 checks against the
+installed Windows build. The desktop suite now declines and then approves the replace
+prompt and asserts the exported file is untouched after the first and rewritten after
+the second.
 
 ## [1.2.0] - 2026-11-20
 

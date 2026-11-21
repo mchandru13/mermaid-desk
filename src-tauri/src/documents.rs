@@ -24,8 +24,9 @@ use std::time::UNIX_EPOCH;
 
 use serde::Serialize;
 use tauri::{AppHandle, State};
-use tauri_plugin_dialog::DialogExt;
+use tauri_plugin_dialog::{DialogExt, MessageDialogButtons};
 
+use crate::clipboard::PNG_SIGNATURE;
 use crate::error::{AppError, AppResult};
 
 /// Hard ceiling for a diagram document (8 MiB). Mermaid sources are text and
@@ -398,9 +399,15 @@ fn perform_save_as(
 fn decode_export_payload(kind: &str, data: &str) -> AppResult<Vec<u8>> {
     let bytes: Vec<u8> = if kind == "png" {
         use base64::Engine as _;
-        base64::engine::general_purpose::STANDARD
+        let decoded = base64::engine::general_purpose::STANDARD
             .decode(data.as_bytes())
-            .map_err(|err| AppError::invalid(format!("Invalid PNG payload: {err}")))?
+            .map_err(|err| AppError::invalid(format!("Invalid PNG payload: {err}")))?;
+        // The export path must not double as a generic byte writer, so the
+        // payload has to actually be a PNG rather than merely base64.
+        if !decoded.starts_with(&PNG_SIGNATURE) {
+            return Err(AppError::invalid("The export payload is not a PNG image."));
+        }
+        decoded
     } else {
         if !data.contains("<svg") {
             return Err(AppError::invalid("The export payload is not SVG markup."));
@@ -483,26 +490,32 @@ fn write_export_bytes(kind: &str, chosen: PathBuf, bytes: &[u8]) -> AppResult<St
     Ok(display_path(&target))
 }
 
-/// Quick export beside the diagram that is already open. No dialog is shown;
-/// the destination directory is the one the user already chose for the file.
+/// Quick export beside the diagram that is already open.
+///
+/// The destination directory is the one the user already chose for the file, so
+/// no file picker is shown. Replacing a file the app did not create still needs
+/// the user's consent, and only a dialog owned by Rust can collect it: the
+/// renderer is untrusted, so a flag it sends is not permission.
 #[tauri::command]
-pub fn export_beside_document(
+pub async fn export_beside_document(
+    app: AppHandle,
     document_path: String,
     kind: String,
     data: String,
-    overwrite: bool,
     access: State<'_, DocumentAccess>,
 ) -> AppResult<String> {
-    export_beside_impl(&access, Path::new(&document_path), &kind, &data, overwrite)
+    export_beside_confirmed(&access, &app, Path::new(&document_path), &kind, &data)
 }
 
-/// Implementation of the beside-export, split out so it can be tested directly.
-fn export_beside_impl(
+/// Ask the user before replacing an existing file, then write.
+///
+/// Split from the command so the decision can be tested without a native dialog.
+fn export_beside_confirmed(
     access: &DocumentAccess,
+    app: &AppHandle,
     document_path: &Path,
     kind: &str,
     data: &str,
-    overwrite: bool,
 ) -> AppResult<String> {
     let (extension, _) = export_extension(kind)?;
     let document = canonical_existing(document_path)?;
@@ -513,13 +526,46 @@ fn export_beside_impl(
     }
 
     let target = document.with_extension(extension);
-    if target.exists() && !overwrite {
-        return Err(AppError::conflict(format!(
-            "{} already exists next to the diagram.",
-            display_path(&target)
-        )));
+    if target.exists() {
+        let replace = app
+            .dialog()
+            .message(format!(
+                "{} already exists next to this diagram. Replace it?",
+                display_path(&target)
+            ))
+            .title("Replace existing export?")
+            .buttons(MessageDialogButtons::YesNo)
+            .blocking_show();
+        if !replace {
+            return Err(AppError::conflict(format!(
+                "{} was not replaced.",
+                display_path(&target)
+            )));
+        }
     }
 
+    export_beside_impl(access, &document, kind, data)
+}
+
+/// Implementation of the beside-export, split out so it can be tested directly.
+///
+/// The caller is responsible for consenting to a replacement; this function
+/// writes unconditionally once the document itself is authorised.
+fn export_beside_impl(
+    access: &DocumentAccess,
+    document_path: &Path,
+    kind: &str,
+    data: &str,
+) -> AppResult<String> {
+    let (extension, _) = export_extension(kind)?;
+    let document = canonical_existing(document_path)?;
+    if !access.is_authorized(&document) {
+        return Err(AppError::forbidden(
+            "Export beside is only available for a document opened in this session.",
+        ));
+    }
+
+    let target = document.with_extension(extension);
     let bytes = decode_export_payload(kind, data)?;
     write_atomic(&target, &bytes)?;
     Ok(display_path(&target))
@@ -909,22 +955,32 @@ mod tests {
     }
 
     #[test]
-    fn export_beside_requires_authorisation_and_respects_overwrite() {
+    fn export_beside_requires_authorisation() {
         let (dir, path) = temp_file("beside.mmd", b"graph TD\n");
         let access = DocumentAccess::default();
         let svg = "<svg xmlns=\"http://www.w3.org/2000/svg\"></svg>";
 
-        let refused = export_beside_impl(&access, &path, "svg", svg, false).unwrap_err();
+        let refused = export_beside_impl(&access, &path, "svg", svg).unwrap_err();
         assert_eq!(refused.code, "forbidden");
 
         access.authorize(&canonical_existing(&path).unwrap());
-        let written = export_beside_impl(&access, &path, "svg", svg, false).expect("beside");
+        let written = export_beside_impl(&access, &path, "svg", svg).expect("beside");
         assert!(written.ends_with("beside.svg"));
         assert!(dir.path().join("beside.svg").exists());
+    }
 
-        let conflict = export_beside_impl(&access, &path, "svg", svg, false).unwrap_err();
-        assert_eq!(conflict.code, "conflict");
-        assert!(export_beside_impl(&access, &path, "svg", svg, true).is_ok());
+    /// `kind = "png"` must not be a generic byte writer: arbitrary base64 used to
+    /// be accepted, which is what let a compromised renderer plant or clobber a
+    /// `.png` sibling with any content it liked.
+    #[test]
+    fn export_rejects_png_payloads_without_a_signature() {
+        use base64::Engine as _;
+        let dir = tempfile::tempdir().unwrap();
+        let encoded = base64::engine::general_purpose::STANDARD.encode(b"not a png at all");
+
+        let error = perform_export("png", dir.path().join("chart.png"), &encoded).unwrap_err();
+        assert_eq!(error.code, "invalid");
+        assert!(!dir.path().join("chart.png").exists());
     }
 
     #[test]

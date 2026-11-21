@@ -11,10 +11,10 @@ This report records what was actually executed. Anything not executed is listed 
 
 | Suite | Command | Result |
 | --- | --- | --- |
-| Rust unit/integration | `cargo test` (in `src-tauri`) | **66 passed, 0 failed** |
+| Rust unit/integration | `cargo test` (in `src-tauri`) | **67 passed, 0 failed** |
 | Frontend unit/integration | `npm run test` (Vitest) | **64 passed, 0 failed** across 6 files |
 | Production UI E2E | `npm run build && npm run test:e2e` (Playwright, Chromium 159) | **25 passed, 0 failed** |
-| Desktop E2E | `npm run test:desktop` (tauri-driver + WebView2 + real Rust binary) | **45 checks passed** |
+| Desktop E2E | `npm run test:desktop` (tauri-driver + WebView2 + real Rust binary) | **54 checks passed** |
 | Type check | `npx tsc --noEmit` | clean |
 
 Rust coverage: path canonicalisation, verbatim-path display, extension allowlists,
@@ -29,7 +29,8 @@ and rejection before the clipboard is touched)**,
 files)**, **recent-file trust (reads require authorisation or a persisted diagram
 recent; forged and legacy non-diagram recents are dropped)**, **native drop filtering
 (extension, absolute path, existence, 32-file cap, and queuing is not authorisation)**,
-**beside-export authorisation/overwrite**,
+**beside-export authorisation (a renderer flag cannot authorise a replacement; the
+decision moved behind a Rust-owned dialog), and PNG export signature rejection**,
 settings round-trip and split clamping, corrupt-file fallback, backup creation,
 recent-file cap.
 
@@ -442,5 +443,15 @@ Limitations encountered:
   `WM_SETTEXT`/UI Automation `ValuePattern`; the harness writes it with
   `EM_REPLACESEL` + `BM_CLICK` and then verifies the resulting file, which is what the
   user-visible flow produces.
+- **Message-box buttons:** the beside-export replace prompt is a TaskDialog whose
+  buttons are DirectUI panes with no window class, no control id, and no UI Automation
+  action pattern. `scripts/desktop/dialog-answer.ps1` therefore locates the button by
+  its accessible name and clicks its centre. The window is matched by title *and* by
+  owning process, so a stale instance or a leftover dialog cannot be clicked by mistake;
+  when no app process is found the script refuses rather than falling back to title
+  alone. The suite plants a sentinel line in the export and asserts it survives "No" and
+  is gone after "Yes", so a mis-click or a no-op write fails the run instead of passing
+  silently. The click assumes an interactive desktop session with a real cursor
+  position, like the rest of the native-dialog automation.
 
 

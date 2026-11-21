@@ -193,13 +193,11 @@ export const platform = {
     documentPath: string,
     kind: "svg" | "png",
     data: string,
-    overwrite: boolean,
   ) =>
     call<string>("export_beside_document", {
       documentPath,
       kind,
       data,
-      overwrite,
     }),
   copyImage: (pngBase64: string) =>
     call<{ width: number; height: number }>("copy_image_to_clipboard", {
