@@ -15,7 +15,7 @@ This report records what was actually executed. Anything not executed is listed 
 | Frontend unit/integration | `npm run test` (Vitest) | **70 passed, 0 failed** across 6 files |
 | Production UI E2E | `npm run build && npm run test:e2e` (Playwright, Chromium 159) | **25 passed, 0 failed** |
 | Desktop E2E | `npm run test:desktop` (tauri-driver + WebView2 + real Rust binary) | **54 checks passed** |
-| Release tooling | `npm run test:scripts` (node --test) | **25 passed, 0 failed** |
+| Release tooling | `npm run test:scripts` (node --test) | **31 passed, 0 failed** |
 | Type check | `npx tsc --noEmit` | clean |
 
 Rust coverage: path canonicalisation, verbatim-path display, extension allowlists,
@@ -417,6 +417,28 @@ local build:
 | Released asset | Size | SHA-256 |
 | --- | --- | --- |
 | `MermaidDesk_1.2.1_x64-setup.exe` | 6,669,444 B | `5B3E8E6B47AB444734958DB0FC74DC544030BB6CB7DF6A9BE8CCD19572F747A4` |
+
+### Release 1.3.0
+
+Four new templates plus the hardening work, verified on the *released* installer:
+
+- The first tag run failed on Windows only, at the tag guard:
+  `--tag needs a tag name`. The `$TAG` env indirection added for L2 works in bash but
+  not in pwsh, which is the Windows default. Both guard steps now declare
+  `shell: bash`; the draft and tag were deleted while nothing was published, and the
+  retry succeeded. A CI rule now catches this class (see §2).
+- Tag run [44910370364](https://github.com/mchandru13/mermaid-desk/actions/runs/44910370364):
+  three bundles plus the **Checksums** job green; seven assets in the draft.
+- `sha256sum` of the downloaded `MermaidDesk_1.3.0_x64-setup.exe` matched
+  `SHA256SUMS.txt` (`ad389be5…`).
+- The downloaded installer was installed silently and reported
+  `DisplayVersion 1.3.0`.
+- The whole desktop suite was run against that installed binary
+  (`MERMAIDDESK_APP=…`): **54/54 checks**.
+
+| Released asset | Size | SHA-256 |
+| --- | --- | --- |
+| `MermaidDesk_1.3.0_x64-setup.exe` | 6,676,952 B | `AD389BE5944239669EB44C1944E8A4E7E704AF624472DF9F76BB7BEC0D99B83` |
 
 ## 6. REA evidence for the shipped build
 
