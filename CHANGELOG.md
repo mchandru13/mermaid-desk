@@ -27,7 +27,8 @@ it for people deciding whether to upgrade (see `docs/RELEASING.md`).
 ### Changed
 
 - CI now rejects a workflow that puts a `${{ … }}` expression inside a `run:` script,
-  which is the shape the tag-name bug took.
+  which is the shape the tag-name bug took, and rejects a plain YAML value containing
+  `: ` — that one broke the CI file itself while this change was being made.
 - The beside-export decision moved into `export_target`, so authorisation and "does
   replacing this need consent" are covered by `cargo test` on all three platforms
   rather than only by GUI automation.

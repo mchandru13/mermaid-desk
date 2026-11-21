@@ -15,7 +15,7 @@ This report records what was actually executed. Anything not executed is listed 
 | Frontend unit/integration | `npm run test` (Vitest) | **68 passed, 0 failed** across 6 files |
 | Production UI E2E | `npm run build && npm run test:e2e` (Playwright, Chromium 159) | **25 passed, 0 failed** |
 | Desktop E2E | `npm run test:desktop` (tauri-driver + WebView2 + real Rust binary) | **54 checks passed** |
-| Release tooling | `npm run test:scripts` (node --test) | **22 passed, 0 failed** |
+| Release tooling | `npm run test:scripts` (node --test) | **25 passed, 0 failed** |
 | Type check | `npx tsc --noEmit` | clean |
 
 Rust coverage: path canonicalisation, verbatim-path display, extension allowlists,

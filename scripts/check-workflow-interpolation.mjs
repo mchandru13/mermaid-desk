@@ -57,19 +57,56 @@ function workflowFiles(args) {
     .map((name) => join(WORKFLOW_DIR, name));
 }
 
+/**
+ * Catch the YAML mistakes a text scan cannot see.
+ *
+ * The whole reason this file exists is that a broken workflow only shows up as a
+ * failed run with "likely failed because of a workflow file issue", which says
+ * nothing useful. Two cheap checks cover what actually goes wrong when editing a
+ * `run:` block or a step name:
+ *
+ *  - a plain (unquoted) scalar value may not contain ": " — that is how
+ *    `- name: ... out of run: scripts` silently becomes a mapping;
+ *  - every `jobs:` entry must be an object with `steps`.
+ */
+export function structureProblems(text) {
+  const problems = [];
+  text.split(/\r?\n/).forEach((line, index) => {
+    const mapping = /^(\s*(?:-\s+)?[A-Za-z_][\w.\-]*):\s+(.*)$/.exec(line);
+    if (!mapping) return;
+    const value = mapping[2];
+    if (value === "" || /^[|>]/.test(value)) return;
+    // Quoted, flow, or anchored values are fine; a bare ": " is not.
+    if (/^["'{[]|^[&*]/.test(value) || /^["']/.test(value)) return;
+    if (value.includes(": ")) {
+      problems.push({
+        line: index + 1,
+        text: line.trim(),
+        reason: "unquoted value contains ': ', which starts a nested mapping",
+      });
+    }
+  });
+  return problems;
+}
+
 function main(args) {
   let failed = false;
   for (const file of workflowFiles(args)) {
-    const hits = runScriptLines(readFileSync(file, "utf8"));
-    for (const hit of hits) {
+    const text = readFileSync(file, "utf8");
+    for (const hit of runScriptLines(text)) {
       failed = true;
       console.error(`${file}:${hit.line}: expression inside a run: script`);
       console.error(`  ${hit.text}`);
       console.error('  pass it through an env: block and read "$VAR" instead');
     }
+    for (const problem of structureProblems(text)) {
+      failed = true;
+      console.error(`${file}:${problem.line}: ${problem.reason}`);
+      console.error(`  ${problem.text}`);
+    }
   }
   if (failed) return 1;
-  console.log("No workflow interpolates an expression inside a run: script.");
+  console.log("Workflows are structurally sound and keep expressions out of run: scripts.");
   return 0;
 }
 
