@@ -2217,7 +2217,7 @@ dependencies = [
 
 [[package]]
 name = "mermaid-desk"
-version = "1.3.0"
+version = "1.3.1"
 dependencies = [
  "arboard",
  "base64 0.22.1",
