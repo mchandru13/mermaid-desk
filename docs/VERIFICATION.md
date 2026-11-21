@@ -391,6 +391,26 @@ Session recovery, verified on the *released* installer rather than a local build
 | --- | --- | --- |
 | `MermaidDesk_1.2.0_x64-setup.exe` | 6,658,321 B | `7266EEEF8F2EA6F8B0733A8BD907B7F882BE347B4AE814736A34398A2D4E8FF6` |
 
+### Release 1.2.1
+
+The beside-export authorisation fix, verified on the *released* installer rather than a
+local build:
+
+- Tag run [44878771286](https://github.com/mchandru13/mermaid-desk/actions/runs/44878771286):
+  three bundles plus the **Checksums** job green; seven assets in the draft.
+- `sha256sum` of the downloaded `MermaidDesk_1.2.1_x64-setup.exe` matched
+  `SHA256SUMS.txt` (`5b3e8e6b…`).
+- The downloaded installer was installed silently and reported
+  `FileVersion 1.2.1` / `ProductVersion 1.2.1`.
+- The whole desktop suite was run against that installed binary
+  (`MERMAIDDESK_APP=…`): **54/54 checks**, including declining and then approving the
+  new beside-export replace prompt, with the planted sentinel proving the file is
+  untouched after the decline and genuinely rewritten after the approval.
+
+| Released asset | Size | SHA-256 |
+| --- | --- | --- |
+| `MermaidDesk_1.2.1_x64-setup.exe` | 6,669,444 B | `5B3E8E6B47AB444734958DB0FC74DC544030BB6CB7DF6A9BE8CCD19572F747A4` |
+
 ## 6. REA evidence for the shipped build
 
 | Item | Evidence |
