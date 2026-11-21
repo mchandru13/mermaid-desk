@@ -36,6 +36,47 @@ describe("SVG sanitisation", () => {
     expect(clean).toContain("#chart .node rect");
     expect(clean).toContain('id="chart"');
   });
+
+  it("drops a style block that would fetch a remote resource", () => {
+    const remote = `<svg xmlns="http://www.w3.org/2000/svg">
+      <style>#chart .node { background: url("https://attacker.example/pixel"); }</style>
+      <rect width="10" height="10" />
+    </svg>`;
+    const clean = sanitizeSvg(remote);
+    expect(clean).not.toMatch(/attacker\.example/i);
+    expect(clean).not.toContain("<style");
+    expect(clean).toContain("<rect");
+  });
+
+  it("drops a remote font reference and a protocol-relative reference", () => {
+    for (const css of [
+      `#chart{font-family:x}@font-face{font-family:x;src:url(https://a.example/f.woff2)}`,
+      `#chart .node{fill:url(//a.example/p.svg#g)}`,
+      `#chart .node{fill:url(file:///etc/passwd)}`,
+    ]) {
+      const svg = `<svg xmlns="http://www.w3.org/2000/svg"><style>${css}</style><rect/></svg>`;
+      expect(sanitizeSvg(svg)).not.toContain("<style");
+    }
+  });
+
+  it("keeps url(#id) references, which mermaid uses for markers and gradients", () => {
+    const local = `<svg xmlns="http://www.w3.org/2000/svg">
+      <style>#chart .marker { fill: url(#arrow); }</style>
+      <rect width="10" height="10" style="fill: url(#grad); stroke: url(#s)" />
+    </svg>`;
+    const clean = sanitizeSvg(local);
+    expect(clean).toContain("url(#arrow)");
+    expect(clean).toContain("url(#grad)");
+  });
+
+  it("drops a remote reference in a style attribute but keeps the element", () => {
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg">
+      <rect width="10" height="10" style="background: url(https://a.example/x)" />
+    </svg>`;
+    const clean = sanitizeSvg(svg);
+    expect(clean).not.toMatch(/a\.example/);
+    expect(clean).toContain("<rect");
+  });
 });
 
 describe("SVG metadata", () => {

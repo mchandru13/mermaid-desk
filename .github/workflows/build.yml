@@ -12,7 +12,7 @@ concurrency:
   cancel-in-progress: false
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   build:
@@ -31,8 +31,15 @@ jobs:
             bundles: deb,appimage
             artifact: mermaid-desk-linux
     runs-on: ${{ matrix.os }}
+    # Only attaching assets to the draft needs write access.
+    permissions:
+      contents: write
     steps:
+      # The release job holds a write-scoped token, so nothing later may inherit
+      # it through the working tree.
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       - uses: actions/setup-node@v7
         with:
@@ -62,10 +69,14 @@ jobs:
 
       # Fail in seconds, before a single bundle is built, when the tag and the
       # tree disagree. A tag that does not match the binaries makes the release
-      # history a lie.
+      # history a lie. The tag arrives through the environment: interpolating
+      # ${{ github.ref_name }} into the script would let a crafted tag name
+      # inject shell commands.
       - name: Check tag matches the app version
         if: startsWith(github.ref, 'refs/tags/')
-        run: node scripts/set-version.mjs --check --tag "${{ github.ref_name }}"
+        env:
+          TAG: ${{ github.ref_name }}
+        run: node scripts/set-version.mjs --check --tag "$TAG"
 
       # The draft body is the changelog section for this version, so the
       # repository and the release page cannot drift apart. Missing section =
@@ -73,7 +84,9 @@ jobs:
       - name: Extract release notes
         if: startsWith(github.ref, 'refs/tags/')
         id: notes
-        run: node scripts/release-notes.mjs "${{ github.ref_name }}" --github-output
+        env:
+          TAG: ${{ github.ref_name }}
+        run: node scripts/release-notes.mjs "$TAG" --github-output
 
       - name: Build bundles
         uses: tauri-apps/tauri-action@v1
@@ -111,8 +124,14 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/')
     needs: build
     runs-on: ubuntu-latest
+    # Uploading SHA256SUMS.txt and rewriting the draft body need write access.
+    permissions:
+      contents: write
     steps:
+      # Authenticates through GH_TOKEN below, so no stored git credential.
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       - name: Hash the attached assets
         env:

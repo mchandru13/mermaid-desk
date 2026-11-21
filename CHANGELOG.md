@@ -9,8 +9,20 @@ it for people deciding whether to upgrade (see `docs/RELEASING.md`).
 
 ## [Unreleased]
 
-Nothing yet. Add entries here as changes land; move them into a dated version
-section when you cut a release.
+### Security
+
+- A diagram can no longer carry a remote fetch into an exported `.svg`. The
+  hardening pass previously removed `@import`, `expression(` and `javascript:`
+  from a style block but kept `url(https://…)` inside it. The app's CSP blocked the
+  request while the diagram was on screen, but an exported file has no CSP, so the
+  rule became live when the user opened it in a browser. Remote schemes and
+  protocol-relative URLs are now dropped; `url(#id)` references are kept because
+  Mermaid builds its markers and gradients with them.
+- The release workflow no longer interpolates the tag name into shell commands.
+  `${{ github.ref_name }}` was substituted into two `run:` scripts, so a crafted tag
+  name could execute shell inside a job holding a write-scoped token. The tag is now
+  read from the environment, the token is no longer persisted into `.git/config`, and
+  `contents: write` is granted per job instead of to the whole workflow.
 
 ## [1.2.1] - 2026-11-21
 

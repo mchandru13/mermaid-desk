@@ -161,6 +161,16 @@ const FORBIDDEN_ELEMENTS = new Set([
 const EXTERNAL_URL = /^(?:javascript:|vbscript:|https?:|file:|data:text\/html)/i;
 
 /**
+ * CSS that would fetch something over the network (or from disk).
+ *
+ * Mermaid's own stylesheets use `url(#id)` for markers and gradients, so a bare
+ * `url(` test would destroy every diagram. Only a scheme, or a protocol-relative
+ * `//host`, is a remote reference. `data:` is excluded on purpose: it is inline
+ * bytes, not a fetch, and mermaid embeds images that way.
+ */
+const REMOTE_CSS_REFERENCE = /url\(\s*['"]?\s*(?:https?:|file:|\/\/)/i;
+
+/**
  * Defence-in-depth hardening of already-purified SVG: removes active content,
  * event handlers, external references, and CSS that could fetch network
  * resources. Runs on a parsed XML document so the result is deterministic.
@@ -204,14 +214,17 @@ function hardenSvg(svg: string): string {
         element.removeAttribute(attribute.name);
         continue;
       }
-      if (name === "style" && /url\(\s*['"]?\s*(?:https?:|javascript:|file:)/i.test(value)) {
+      if (name === "style" && (REMOTE_CSS_REFERENCE.test(value) || /javascript:/i.test(value))) {
         element.removeAttribute(attribute.name);
       }
     }
 
     if (tag === "style") {
       const css = element.textContent ?? "";
-      if (/@import|expression\s*\(|javascript:/i.test(css)) {
+      // A whole style block is dropped for active content, or for anything that
+      // would fetch a remote resource. Mermaid's own rules are scoped to the
+      // diagram id and use url(#id), so they survive both tests.
+      if (/@import|expression\s*\(|javascript:/i.test(css) || REMOTE_CSS_REFERENCE.test(css)) {
         doomed.push(element);
       }
     }

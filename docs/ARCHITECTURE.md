@@ -42,7 +42,7 @@ that validates the request.
 | Session file as a capability | `save_session` refuses any path not authorised in the current session, so the renderer cannot seed `session.json`; restore may therefore authorise the paths it finds. Content is capped and the file is local-only | `src-tauri/src/session.rs` |
 | Partial writes / corruption | Writes go to a temp file in the destination directory, `sync_all`, then atomic replacement rename; settings keep one backup | `write_atomic`, `settings.rs` |
 | Concurrent modification | mtime conflict detection; the UI asks before overwriting | `save_document` + `App` confirm dialog |
-| Script execution through a diagram | Mermaid `securityLevel: "strict"`, `htmlLabels: false`, DOMPurify SVG profile, then a hardening pass that strips scripts, `on*` handlers, `foreignObject`, remote `href`/`src`, and CSS `@import`/`expression` | `src/lib/render.ts` |
+| Script execution through a diagram | Mermaid `securityLevel: "strict"`, `htmlLabels: false`, DOMPurify SVG profile, then a hardening pass that strips scripts, `on*` handlers, `foreignObject`, remote `href`/`src`, and CSS `@import`/`expression`, plus any `url(…)` naming a remote scheme | `src/lib/render.ts` |
 | Remote code or data | CSP: `script-src 'self'`, `style-src 'self' 'unsafe-inline'` (Mermaid injects scoped styles), `img-src 'self' data: blob:`, `connect-src 'self' ipc: http://ipc.localhost`, `frame-src 'none'`, `object-src 'none'`; no `<iframe>`, no remote fonts | `src-tauri/tauri.conf.json` |
 | Privilege escalation through settings | `Settings::sanitized` clamps sizes/scales, validates theme names, filters non-absolute and duplicate recent paths, caps the list at 15 | `settings.rs` |
 | IPC abuse | Only the fifteen commands in `lib.rs` are exposed; each has a narrow input shape | `lib.rs` |
@@ -50,9 +50,12 @@ that validates the request.
 | Untrusted window content | Single window, no external navigation, no `window.open` usage, no shell open of web content | `tauri.conf.json` |
 
 Trade-off: `style-src 'unsafe-inline'` is required because Mermaid renders a scoped
-`<style>` block inside the diagram. Inline *scripts* remain blocked, and the hardening
-pass removes style rules that would fetch remote resources, so this does not create a
-network path.
+`<style>` block inside the diagram. Inline *scripts* remain blocked. The hardening pass
+drops a style block that contains `@import`, `expression(`, `javascript:`, or a `url()`
+naming a remote scheme (`http:`, `https:`, `file:`, or protocol-relative `//`), so a
+diagram cannot plant a network fetch in the app or in an exported `.svg`. `url(#id)`
+references are kept, because Mermaid uses them for markers and gradients.
+`data:` URLs are also kept: they are inline bytes rather than a fetch.
 
 ## 3. Document model
 
