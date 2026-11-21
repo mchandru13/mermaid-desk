@@ -9,41 +9,48 @@ it for people deciding whether to upgrade (see `docs/RELEASING.md`).
 
 ## [Unreleased]
 
+Nothing yet. Add entries here as changes land; move them into a dated version
+section when you cut a release.
+
+## [1.3.0] - 2026-11-21
+
+Four more diagram types, and a hardening pass on exported files.
+
+### Added
+
+- **Architecture**, **Packet diagram**, **Kanban board** and **Treemap** are now in
+  the template gallery. Mermaid already supported them and the editor already
+  recognised their keywords, but there was no template to start from. They use the
+  same preview, sanitisation and export path as every other diagram, so there is
+  nothing new to learn or configure.
+
 ### Security
 
-- A diagram can no longer carry a remote fetch into an exported `.svg`. The
-  hardening pass previously removed `@import`, `expression(` and `javascript:`
-  from a style block but kept `url(https://…)` inside it. The app's CSP blocked the
-  request while the diagram was on screen, but an exported file has no CSP, so the
-  rule became live when the user opened it in a browser. Remote schemes and
-  protocol-relative URLs are now dropped; `url(#id)` references are kept because
-  Mermaid builds its markers and gradients with them.
-- The release workflow no longer interpolates the tag name into shell commands.
-  `${{ github.ref_name }}` was substituted into two `run:` scripts, so a crafted tag
-  name could execute shell inside a job holding a write-scoped token. The tag is now
-  read from the environment, the token is no longer persisted into `.git/config`, and
-  `contents: write` is granted per job instead of to the whole workflow.
+- A diagram can no longer carry a remote fetch into an exported `.svg`. The hardening
+  pass removed `@import`, `expression(` and `javascript:` from a style block but kept
+  `url(https://…)` inside it. The app's own CSP blocked the request while the diagram
+  was on screen, but an exported file carries no CSP, so the rule came alive when you
+  opened it in a browser. Remote schemes and protocol-relative URLs are now dropped.
+  `url(#id)` references are kept, because Mermaid draws its arrowheads and gradients
+  with them.
+- The release workflow no longer interpolates the tag name into shell commands, and no
+  longer leaves a write-scoped token in the working tree where a dependency's install
+  script could read it. This changes nothing you can see in the app; it protects the
+  installers you download.
 
-### Changed
+### Fixed
 
-- The template gallery gained four diagram types that Mermaid already supported
-  but the app did not offer: **Architecture**, **Packet diagram**, **Kanban board**
-  and **Treemap**. All four render through the existing sanitisation and export path,
-  so they add no dependency and no new rendering surface.
-- The editor no longer claims two diagram types Mermaid 12 cannot draw. `zenuml`
-  needs an external plugin that is not bundled, and `usecase` is not a Mermaid diagram
-  at all; both produced a "No diagram type detected" error instead of rendering. A test
-  now checks every listed keyword against Mermaid's own parser.
-- CI now rejects a workflow that puts a `${{ … }}` expression inside a `run:` script,
-  which is the shape the tag-name bug took, and rejects a plain YAML value containing
-  `: ` — that one broke the CI file itself while this change was being made.
-- The beside-export decision moved into `export_target`, so authorisation and "does
-  replacing this need consent" are covered by `cargo test` on all three platforms
-  rather than only by GUI automation.
-- The desktop suite gained a `.github/workflows/desktop.yml` carrier. A hosted
-  `windows-latest` runner cannot drive WebView2 — measured, not assumed: it fails with
-  `DevToolsActivePort file doesn't exist` — so the workflow documents the recipe for a
-  self-hosted Windows runner and stays manual until one exists.
+- The editor no longer claims two diagram types Mermaid cannot draw. `zenuml` needs a
+  plugin that is not bundled, and `usecase` is not a Mermaid diagram at all; a document
+  starting with either showed a "No diagram type detected" error instead of a drawing.
+  They now report as unrecognised, like any other unknown syntax.
+
+### Verification
+
+70 Vitest, 69 Rust, 25 release-tooling tests, 25 Playwright scenarios and 54 checks
+against the installed Windows build. The template-geometry test now covers all 19
+built-in templates and asserts that the four new ones actually render as their own
+Mermaid type rather than falling back to a flowchart.
 
 ## [1.2.1] - 2026-11-21
 
