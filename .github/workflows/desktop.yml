@@ -1,22 +1,22 @@
 name: Desktop E2E
 
 # The desktop suite drives the real Tauri binary through tauri-driver and
-# WebView2. It is kept out of ci.yml because it needs GUI automation and adds
-# many minutes per run.
+# WebView2. It needs an interactive Windows desktop session, which a hosted
+# runner does not provide.
 #
-# It starts as dispatch-only on purpose: whether a hosted Windows runner can
-# host WebView2 with a matched msedgedriver has to be observed, not assumed.
-# Once this is reliably green it belongs in ci.yml on windows-latest.
+# Observed on actions/runner-images windows-latest (run 44893033642): the
+# browser starts, then fails with
+#
+#   SessionNotCreatedError: session not created: DevToolsActivePort file doesn't exist
+#
+# so WebView2 cannot be driven there. This workflow is kept because it is the
+# complete, reviewable description of how to run the suite somewhere that does
+# have a session — a self-hosted Windows runner. Until one is registered it is
+# manual only; it must not be added to ci.yml, where it can only be red.
+#
+# Run it locally instead: `npm run test:desktop` after `npm run tauri:build`.
 on:
   workflow_dispatch:
-  # Uncomment once the run below is reliable. Keep it out of every push until
-  # then, so a hosting limitation cannot make main permanently red.
-  # pull_request:
-  #   paths:
-  #     - "src/**"
-  #     - "src-tauri/**"
-  #     - "scripts/desktop-e2e.mjs"
-  #     - "scripts/desktop/**"
 
 concurrency:
   group: desktop-${{ github.ref }}
@@ -31,6 +31,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        # Swap for [self-hosted, windows] once such a runner exists; the steps
+        # below are unchanged.
         os: [windows-latest]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45
@@ -61,8 +63,7 @@ jobs:
           $edge = (Get-Item "C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe" `
             -ErrorAction SilentlyContinue).VersionInfo.ProductVersion
           if (-not $edge) { throw "Edge not found; cannot match msedgedriver" }
-          $major = ($edge -split '\.')[0]
-          Write-Host "Edge $edge (major $major)"
+          Write-Host "Edge $edge"
 
           $url = "https://msedgedriver.microsoft.com/$edge/edgedriver_win64.zip"
           $out = Join-Path $env:RUNNER_TEMP "edgedriver.zip"

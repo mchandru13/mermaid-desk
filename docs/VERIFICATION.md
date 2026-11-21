@@ -477,12 +477,13 @@ Limitations encountered:
   is gone after "Yes", so a mis-click or a no-op write fails the run instead of passing
   silently. The click assumes an interactive desktop session with a real cursor
   position, like the rest of the native-dialog automation.
-- **Desktop suite is not in `ci.yml`:** it needs `tauri-driver`, a matched
-  `msedgedriver`, WebView2 and GUI automation, and adds many minutes per run.
-  `.github/workflows/desktop.yml` exists to carry it, and is **dispatch-only** until a
-  hosted runner has been observed to host it reliably; only then should it join `ci.yml`
-  on `windows-latest`. Running it locally for a release remains the gate in
-  `docs/RELEASING.md`.
+- **Desktop suite is not in `ci.yml`:** it needs an interactive Windows desktop
+  session for WebView2, which a hosted runner does not provide. This was measured, not
+  assumed — dispatch run 44893033642 on `windows-latest` started the browser and failed
+  with `SessionNotCreatedError: session not created: DevToolsActivePort file doesn't
+  exist`. `.github/workflows/desktop.yml` keeps the complete recipe for a self-hosted
+  Windows runner, and stays dispatch-only until one exists. Running it locally for a
+  release remains the gate in `docs/RELEASING.md`.
 - **The security decision does not depend on that gap:** `export_target` decides
   authorisation and whether a replacement needs consent, and it is covered by
   `cargo test` on all three operating systems. The desktop suite additionally proves the

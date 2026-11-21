@@ -32,8 +32,10 @@ it for people deciding whether to upgrade (see `docs/RELEASING.md`).
 - The beside-export decision moved into `export_target`, so authorisation and "does
   replacing this need consent" are covered by `cargo test` on all three platforms
   rather than only by GUI automation.
-- The desktop suite gained a `.github/workflows/desktop.yml` carrier. It is
-  dispatch-only until a hosted Windows runner is confirmed to host WebView2 reliably.
+- The desktop suite gained a `.github/workflows/desktop.yml` carrier. A hosted
+  `windows-latest` runner cannot drive WebView2 — measured, not assumed: it fails with
+  `DevToolsActivePort file doesn't exist` — so the workflow documents the recipe for a
+  self-hosted Windows runner and stays manual until one exists.
 
 ## [1.2.1] - 2026-11-21
 
