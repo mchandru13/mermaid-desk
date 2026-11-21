@@ -12,7 +12,7 @@ This report records what was actually executed. Anything not executed is listed 
 | Suite | Command | Result |
 | --- | --- | --- |
 | Rust unit/integration | `cargo test` (in `src-tauri`) | **67 passed, 0 failed** |
-| Frontend unit/integration | `npm run test` (Vitest) | **64 passed, 0 failed** across 6 files |
+| Frontend unit/integration | `npm run test` (Vitest) | **68 passed, 0 failed** across 6 files |
 | Production UI E2E | `npm run build && npm run test:e2e` (Playwright, Chromium 159) | **25 passed, 0 failed** |
 | Desktop E2E | `npm run test:desktop` (tauri-driver + WebView2 + real Rust binary) | **54 checks passed** |
 | Type check | `npx tsc --noEmit` | clean |
@@ -35,7 +35,9 @@ settings round-trip and split clamping, corrupt-file fallback, backup creation,
 recent-file cap.
 
 Frontend coverage: tab model and dirty baselines, path comparison (Windows/macOS),
-recents, diagram-type detection, shortcut mapping, SVG sanitisation/hardening, parse
+recents, diagram-type detection, shortcut mapping, SVG sanitisation/hardening
+(**remote `url()` schemes dropped while `url(#id)` survives**, in a style block and in a
+style attribute), parse
 -error line extraction, export naming/backgrounds/base64 lengths, **clipboard PNG
 headers and the copy flow**, workspace controller
 (open, edit, save-as, reopen, close guards, cycling, **dropped paths**, **menu actions**).
